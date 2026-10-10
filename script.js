@@ -1,994 +1,1721 @@
-    (function() {
-      'use strict';
+(function () {
+  'use strict';
 
-      // ================================================================
-      // TRANSLATIONS
-      // ================================================================
-      const TRANSLATIONS = {
-        en: {
-          onboard1Headline: "One thing is enough.",
-          onboard1Sub: "Forget the endless to-do lists. Choose one thing that matters today.",
-          onboard2Headline: "Choose. Do. Done.",
-          stepChoose: "Choose",
-          stepChooseText: "Pick one thing.",
-          stepDo: "Do",
-          stepDoText: "Give it your attention.",
-          stepDone: "Done",
-          stepDoneText: "Finish your day with something accomplished.",
-          onboard3Headline: "What's your one thing today?",
-          firstTaskPlaceholder: "Write one thing you want to accomplish today...",
-          howLong: "How long? (optional)",
-          howLong2: "How long? (optional)",
-          time5: "5 min",
-          time10: "10 min",
-          time20: "20 min",
-          time30: "30+ min",
-          continue: "Continue",
-          back: "‹ Back",
-          startMyDay: "Start My Day",
-          skipForNow: "Skip for now",
-          greetingMorning: "Good morning",
-          greetingAfternoon: "Good afternoon",
-          greetingEvening: "Good evening",
-          todayLabel: "TODAY",
-          complete: "Complete",
-          doneTitle: "Done.",
-          doneSub: "You did your one thing today.",
-          emptyTodayTitle: "Your day starts with one thing.",
-          emptyTodaySub: "Choose something worth doing today.",
-          chooseOneThing: "Choose One Thing",
-          historyTitle: "Your Progress",
-          noHistoryTitle: "No history yet.",
-          noHistorySub: "Complete your first One Thing to start building your history.",
-          thingsCompleted: "Things completed",
-          activeDays: "Active days",
-          currentStreak: "Current streak",
-          last14Days: "Last 14 days",
-          yourName: "Your Name",
-          oneThingMember: "One Thing member",
-          name: "Name",
-          notSet: "Not set",
-          appearance: "Appearance",
-          appearanceLight: "Light",
-          appearanceDark: "Dark",
-          appearanceSystem: "System",
-          language: "Language",
-          langEnglish: "English",
-          langArabic: "العربية",
-          notifications: "Notifications",
-          off: "Off",
-          on: "On",
-          reminderTime: "Reminder time",
-          support: "Support",
-          contactSupport: "Contact Support",
-          about: "About",
-          tagline: "One day. One thing.",
-          navToday: "Today",
-          navHistory: "History",
-          navProfile: "Profile",
-          modalTitle: "What's your one thing?",
-          modalSub: "Choose something worth doing today.",
-          modalPlaceholder: "Write one thing...",
-          addOneThing: "Add One Thing",
-          cancel: "Cancel",
-          dayStreak: "day streak",
-          days: "days",
-          day: "day",
-          thingCompleted: "thing completed",
-          thingsCompletedLower: "things completed",
-          enterName: "Enter your name:",
-          enterReminderTime: "Enter reminder time (e.g., 9:00 AM):",
-          chooseAppearance: "Choose appearance",
-          chooseLanguage: "Choose language",
-          noTaskForDay: "No task recorded for this day.",
-          completedOn: "Completed"
+  /* ============================================================
+     STORAGE
+     ============================================================ */
+  const KEY = 'tapfast_v3';
+  const DEFAULT = {
+    best: 0,
+    coins: 0,
+    xp: 0,
+    level: 1,
+    purchased: [],
+    equipped: {
+      target: 'classic_circle',
+      theme: 'classic',
+      effect: 'ripple',
+      button: 'classic',
+      background: 'clean_white'
+    },
+    achievements: {},
+    stats: {
+      games: 0,
+      taps: 0,
+      hits: 0,
+      misses: 0,
+      totalReaction: 0,
+      reactionSamples: 0,
+      bestCombo: 0,
+      totalCoins: 0
+    },
+    settings: {
+      sound: true,
+      music: true,
+      haptics: true,
+      notifications: true,
+      targetFeedback: true,
+      animations: true,
+      difficulty: 'normal',
+      language: 'en',
+      appearance: 'system'
+    }
+  };
+
+  function loadData() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) return deepMerge(JSON.parse(JSON.stringify(DEFAULT)), JSON.parse(raw));
+    } catch (e) {}
+    return JSON.parse(JSON.stringify(DEFAULT));
+  }
+  function deepMerge(a, b) {
+    const out = JSON.parse(JSON.stringify(a));
+    for (const k in b) {
+      if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) out[k] = deepMerge(out[k] || {}, b[k]);
+      else out[k] = b[k];
+    }
+    return out;
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(G.data)); } catch (e) {}
+  }
+
+  /* ============================================================
+     STATE
+     ============================================================ */
+  const G = {
+    data: loadData(),
+    stack: ['splashScreen'],
+    game: {
+      active: false,
+      paused: false,
+      score: 0,
+      timeLeft: 30,
+      duration: 30,
+      timerInt: null,
+      countInt: null,
+      spawnTO: null,
+      targetEl: null,
+      lastTap: 0,
+      combo: 0,
+      maxCombo: 0,
+      hits: 0,
+      misses: 0,
+      taps: 0,
+      reactionTotal: 0,
+      reactionCount: 0,
+      startTime: 0,
+      difficulty: 0
+    },
+    storeCat: 'targets',
+    // Active select sheet
+    sheet: { open: false, onPick: null },
+    // Active confirm dialog
+    confirm: { open: false }
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  /* ============================================================
+     I18N — English / Arabic
+     ============================================================ */
+  const I18N = {
+    en: {
+      tagline: 'Tap the target. Beat the clock.',
+      best: 'Best',
+      level: 'Level',
+      coins: 'Coins',
+      play: 'Play',
+      store: 'Store',
+      stats: 'Stats',
+      settings: 'Settings',
+      score: 'Score',
+      time: 'Time',
+      timesUp: "Time's Up",
+      newBest: 'New Best',
+      bestScore: 'Best Score',
+      accuracy: 'Accuracy',
+      avgReaction: 'Avg Reaction',
+      misses: 'Misses',
+      coinsEarned: 'Coins Earned',
+      xpEarned: 'XP Earned',
+      playAgain: 'Play Again',
+      home: 'Home',
+      targets: 'Targets',
+      themes: 'Themes',
+      effects: 'Effects',
+      buttons: 'Buttons',
+      backgrounds: 'Backgrounds',
+      achievements: 'Achievements',
+      achievementsSection: 'Achievements',
+      generalSection: 'General',
+      feedbackSection: 'Feedback',
+      gameplaySection: 'Gameplay',
+      storeSection: 'Store',
+      dataSection: 'Data',
+      legalSection: 'Legal',
+      language: 'Language',
+      appearance: 'Appearance',
+      sound: 'Sound',
+      music: 'Music',
+      haptics: 'Haptics',
+      notifications: 'Notifications',
+      targetFeedback: 'Target Feedback',
+      targetFeedbackSub: 'Extra visual pulse on hit',
+      animations: 'Animations',
+      difficulty: 'Difficulty',
+      restore: 'Restore Purchases',
+      resetProgress: 'Reset Progress',
+      privacy: 'Privacy Policy',
+      terms: 'Terms of Service',
+      cancel: 'Cancel',
+      confirm: 'Confirm',
+      selectLanguage: 'Language',
+      selectAppearance: 'Appearance',
+      selectDifficulty: 'Difficulty',
+      appearanceLight: 'Light',
+      appearanceDark: 'Dark',
+      appearanceSystem: 'System',
+      difficultyEasy: 'Easy',
+      difficultyNormal: 'Normal',
+      difficultyHard: 'Hard',
+      resetTitle: 'Reset Progress',
+      resetMessage: 'This will permanently erase all your scores, coins, and unlocks. This cannot be undone.',
+      resetConfirm: 'Reset',
+      resetDone: 'Progress reset',
+      restoreTitle: 'Restore Purchases',
+      restoreMessage: 'Your purchases are stored locally on this device and are automatically restored when you open the app.',
+      privacyTitle: 'Privacy Policy',
+      privacyMessage: 'Tap Fast stores all data locally on your device. No personal information is collected, transmitted, or shared. Your scores, coins, and settings never leave your phone.',
+      termsTitle: 'Terms of Service',
+      termsMessage: 'Tap Fast is provided as-is for entertainment purposes. Have fun and play responsibly.',
+      exitTitle: 'Exit Game?',
+      exitMessage: 'Your current round will be lost.',
+      exitContinue: 'Continue Playing',
+      exitConfirm: 'Exit',
+      pausedTitle: 'Paused',
+      pausedMessage: 'Tap Continue to resume your round.',
+      pausedContinue: 'Continue',
+      ok: 'OK',
+      purchased: 'Purchased',
+      notEnoughCoins: 'Not enough coins',
+      buyTitle: 'Unlock item?',
+      buyConfirm: 'Buy',
+      languageEnglish: 'English',
+      languageArabic: 'العربية',
+      achievement: 'Achievement',
+      combo: 'Combo',
+      buy: 'Buy',
+      equip: 'Equip',
+      equipped: 'Equipped',
+      locked: 'Locked',
+      owned: 'Owned',
+      coinsShort: 'coins',
+      levelShort: 'Level',
+      gamesPlayed: 'Games Played',
+      totalTaps: 'Total Taps',
+      successfulTaps: 'Successful Taps',
+      missedTaps: 'Missed Taps',
+      highestCombo: 'Highest Combo',
+      totalCoins: 'Total Coins',
+      xp: 'XP',
+      unlockedOf: 'of',
+      unlocked: 'unlocked',
+      purchaseSheet: 'Unlock this item for',
+      purchaseQuestion: 'coins?'
+    },
+    ar: {
+      tagline: 'اضغط الهدف. اهزم الوقت.',
+      best: 'الأفضل',
+      level: 'المستوى',
+      coins: 'العملات',
+      play: 'ابدأ',
+      store: 'المتجر',
+      stats: 'الإحصاءات',
+      settings: 'الإعدادات',
+      score: 'النقاط',
+      time: 'الوقت',
+      timesUp: 'انتهى الوقت',
+      newBest: 'رقم قياسي جديد',
+      bestScore: 'أفضل نتيجة',
+      accuracy: 'الدقة',
+      avgReaction: 'متوسط الاستجابة',
+      misses: 'الأخطاء',
+      coinsEarned: 'العملات المكتسبة',
+      xpEarned: 'الخبرة المكتسبة',
+      playAgain: 'العب مرة أخرى',
+      home: 'الرئيسية',
+      targets: 'الأهداف',
+      themes: 'الثيمات',
+      effects: 'المؤثرات',
+      buttons: 'الأزرار',
+      backgrounds: 'الخلفيات',
+      achievements: 'الإنجازات',
+      achievementsSection: 'الإنجازات',
+      generalSection: 'عام',
+      feedbackSection: 'التنبيهات',
+      gameplaySection: 'اللعب',
+      storeSection: 'المتجر',
+      dataSection: 'البيانات',
+      legalSection: 'قانوني',
+      language: 'اللغة',
+      appearance: 'المظهر',
+      sound: 'الصوت',
+      music: 'الموسيقى',
+      haptics: 'الاهتزاز',
+      notifications: 'الإشعارات',
+      targetFeedback: 'تنبيه الهدف',
+      targetFeedbackSub: 'نبضة مرئية إضافية عند الضغط',
+      animations: 'الحركات',
+      difficulty: 'الصعوبة',
+      restore: 'استعادة المشتريات',
+      resetProgress: 'إعادة تعيين التقدم',
+      privacy: 'سياسة الخصوصية',
+      terms: 'شروط الخدمة',
+      cancel: 'إلغاء',
+      confirm: 'تأكيد',
+      selectLanguage: 'اللغة',
+      selectAppearance: 'المظهر',
+      selectDifficulty: 'الصعوبة',
+      appearanceLight: 'فاتح',
+      appearanceDark: 'داكن',
+      appearanceSystem: 'النظام',
+      difficultyEasy: 'سهل',
+      difficultyNormal: 'عادي',
+      difficultyHard: 'صعب',
+      resetTitle: 'إعادة تعيين التقدم',
+      resetMessage: 'سيؤدي هذا إلى حذف جميع نتائجك وعملاتك وعناصرك المفتوحة نهائيًا. لا يمكن التراجع عن هذا الإجراء.',
+      resetConfirm: 'إعادة تعيين',
+      resetDone: 'تمت إعادة التعيين',
+      restoreTitle: 'استعادة المشتريات',
+      restoreMessage: 'يتم تخزين مشترياتك محليًا على هذا الجهاز وتُستعاد تلقائيًا عند فتح التطبيق.',
+      privacyTitle: 'سياسة الخصوصية',
+      privacyMessage: 'يخزن Tap Fast جميع البيانات محليًا على جهازك. لا يتم جمع أي معلومات شخصية أو إرسالها أو مشاركتها. لا تغادر نتائجك وعملاتك وإعداداتك هاتفك أبدًا.',
+      termsTitle: 'شروط الخدمة',
+      termsMessage: 'يتم تقديم Tap Fast كما هو لأغراض الترفيه. استمتع والعب بمسؤولية.',
+      exitTitle: 'إنهاء اللعبة؟',
+      exitMessage: 'سيتم فقدان الجولة الحالية.',
+      exitContinue: 'متابعة اللعب',
+      exitConfirm: 'خروج',
+      pausedTitle: 'متوقف مؤقتًا',
+      pausedMessage: 'اضغط متابعة لاستئناف الجولة.',
+      pausedContinue: 'متابعة',
+      ok: 'حسنًا',
+      purchased: 'تم الشراء',
+      notEnoughCoins: 'عملات غير كافية',
+      buyTitle: 'فتح العنصر؟',
+      buyConfirm: 'شراء',
+      languageEnglish: 'English',
+      languageArabic: 'العربية',
+      achievement: 'إنجاز',
+      combo: 'سلسلة',
+      buy: 'شراء',
+      equip: 'تفعيل',
+      equipped: 'مفعّل',
+      locked: 'مقفل',
+      owned: 'مملوك',
+      coinsShort: 'عملة',
+      levelShort: 'مستوى',
+      gamesPlayed: 'الجولات',
+      totalTaps: 'إجمالي الضغطات',
+      successfulTaps: 'الضغطات الناجحة',
+      missedTaps: 'الضغطات الفاشلة',
+      highestCombo: 'أعلى سلسلة',
+      totalCoins: 'إجمالي العملات',
+      xp: 'الخبرة',
+      unlockedOf: 'من',
+      unlocked: 'مفتوح',
+      purchaseSheet: 'فتح هذا العنصر مقابل',
+      purchaseQuestion: 'عملة؟'
+    }
+  };
+
+  const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+  function t(key) {
+    const lang = G.data.settings.language || 'en';
+    return (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
+  }
+
+  function applyTranslations() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      const val = t(key);
+      if (val) el.textContent = val;
+    });
+
+    // Specific dynamic labels
+    $('languageValue').textContent = G.data.settings.language === 'ar' ? t('languageArabic') : t('languageEnglish');
+    $('appearanceValue').textContent =
+      G.data.settings.appearance === 'light' ? t('appearanceLight') :
+      G.data.settings.appearance === 'dark' ? t('appearanceDark') : t('appearanceSystem');
+    $('difficultyValue').textContent =
+      G.data.settings.difficulty === 'easy' ? t('difficultyEasy') :
+      G.data.settings.difficulty === 'hard' ? t('difficultyHard') : t('difficultyNormal');
+
+    // Data-i18n-text attributes for buttons inside store cards etc.
+    document.querySelectorAll('[data-i18n-text]').forEach(el => {
+      const key = el.getAttribute('data-i18n-text');
+      const val = t(key);
+      if (val) el.textContent = val;
+    });
+  }
+
+  function applyDirection() {
+    const lang = G.data.settings.language || 'en';
+    const dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.setAttribute('dir', dir);
+    document.documentElement.setAttribute('lang', lang);
+  }
+
+  /* ============================================================
+     APPEARANCE
+     ============================================================ */
+  const mqlDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function applyAppearance() {
+    const mode = G.data.settings.appearance || 'system';
+    let theme = 'light';
+    if (mode === 'dark') theme = 'dark';
+    else if (mode === 'light') theme = 'light';
+    else theme = (mqlDark && mqlDark.matches) ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0B0B0D' : '#FFFFFF');
+  }
+
+  if (mqlDark) {
+    const handler = () => {
+      if ((G.data.settings.appearance || 'system') === 'system') applyAppearance();
+    };
+    if (mqlDark.addEventListener) mqlDark.addEventListener('change', handler);
+    else if (mqlDark.addListener) mqlDark.addListener(handler);
+  }
+
+  /* ============================================================
+     ICONS
+     ============================================================ */
+  const ICONS = {
+    bolt: '<svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    hand: '<svg viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 1 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
+    star: '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    target: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>',
+    chart: '<svg viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>',
+    check: '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+    crown: '<svg viewBox="0 0 24 24"><path d="M3 6l4 6 5-8 5 8 4-6-2 14H5z"/></svg>',
+    hundred: '<svg viewBox="0 0 24 24"><path d="M5 8h4v10"/><circle cx="15" cy="13" r="4"/></svg>'
+  };
+
+  /* ============================================================
+     AUDIO
+     ============================================================ */
+  let audioCtx = null;
+  function initAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function tone(freq, dur, type, vol) {
+    if (!G.data.settings.sound || !audioCtx) return;
+    try {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type || 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol || 0.05, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + dur);
+    } catch (e) {}
+  }
+  const sfxTap = () => tone(880, 0.06, 'sine', 0.04);
+  const sfxMiss = () => tone(150, 0.1, 'sine', 0.035);
+  const sfxCount = () => tone(660, 0.09, 'sine', 0.045);
+  const sfxResult = () => { tone(660, 0.13, 'sine', 0.045); setTimeout(() => tone(990, 0.22, 'sine', 0.045), 120); };
+
+  /* ============================================================
+     HAPTICS
+     ============================================================ */
+  function haptic(ms) {
+    if (G.data.settings.haptics && navigator.vibrate) {
+      try { navigator.vibrate(ms || 8); } catch (e) {}
+    }
+  }
+
+  /* ============================================================
+     NAVIGATION
+     ============================================================ */
+  function go(id, mode) {
+    mode = mode || 'push';
+    const fromId = G.stack[G.stack.length - 1];
+    if (fromId === id) return;
+    const from = $(fromId);
+    const to = $(id);
+    if (!from || !to) return;
+
+    if (mode === 'push') G.stack.push(id);
+    else if (mode === 'pop') G.stack.pop();
+    else if (mode === 'replace') G.stack[G.stack.length - 1] = id;
+
+    transition(from, to, mode);
+  }
+
+  function transition(from, to, mode) {
+    to.classList.remove('hidden');
+    to.style.transition = 'none';
+    to.style.willChange = 'transform, opacity';
+
+    if (mode === 'push') { to.style.transform = 'translateX(100%)'; to.style.opacity = '1'; }
+    else if (mode === 'pop') { to.style.transform = 'translateX(-30%)'; to.style.opacity = '0.5'; }
+    else { to.style.transform = 'translateX(0)'; to.style.opacity = '0'; }
+    void to.offsetHeight;
+
+    const dur = G.data.settings.animations ? '0.32s' : '0s';
+    const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
+    to.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
+    from.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
+    from.style.willChange = 'transform, opacity';
+
+    to.style.transform = 'translateX(0)';
+    to.style.opacity = '1';
+
+    if (mode === 'push') { from.style.transform = 'translateX(-30%)'; from.style.opacity = '0.5'; }
+    else if (mode === 'pop') { from.style.transform = 'translateX(100%)'; from.style.opacity = '0'; }
+    else { from.style.opacity = '0'; }
+
+    setTimeout(() => {
+      from.classList.add('hidden');
+      from.style.transition = '';
+      from.style.transform = '';
+      from.style.opacity = '';
+      from.style.willChange = '';
+      to.style.transition = '';
+      to.style.transform = '';
+      to.style.opacity = '';
+      to.style.willChange = '';
+    }, G.data.settings.animations ? 340 : 10);
+  }
+
+  /* ============================================================
+     UNIFIED SELECT SHEET
+     ============================================================ */
+  const selectOverlay = $('selectSheetOverlay');
+  const selectTitleEl = $('selectTitle');
+  const selectOptionsEl = $('selectOptions');
+
+  function openSelect(config) {
+    // config: { title, options: [{value, label, sub, preview, selected}], onPick }
+    if (G.sheet.open) closeSelect(false);
+
+    selectTitleEl.textContent = config.title || '';
+    selectOptionsEl.innerHTML = '';
+
+    config.options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'select-option' + (opt.selected ? ' selected' : '');
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-checked', opt.selected ? 'true' : 'false');
+
+      // Optional appearance preview
+      if (opt.preview) {
+        const prev = document.createElement('div');
+        prev.className = 'appearance-preview ' + opt.preview;
+        btn.appendChild(prev);
+      }
+
+      const main = document.createElement('div');
+      main.className = 'select-option-label';
+      main.textContent = opt.label;
+      if (opt.sub) {
+        const sub = document.createElement('div');
+        sub.className = 'select-option-sub';
+        sub.textContent = opt.sub;
+        main.appendChild(sub);
+      }
+      btn.appendChild(main);
+
+      const check = document.createElement('div');
+      check.className = 'select-option-check';
+      check.innerHTML = ICONS.check;
+      btn.appendChild(check);
+
+      btn.addEventListener('click', () => {
+        haptic(8);
+        // Update all options visually
+        selectOptionsEl.querySelectorAll('.select-option').forEach(el => {
+          el.classList.remove('selected');
+          el.setAttribute('aria-checked', 'false');
+        });
+        btn.classList.add('selected');
+        btn.setAttribute('aria-checked', 'true');
+
+        // Commit after a brief pause so the check animates
+        setTimeout(() => {
+          if (typeof config.onPick === 'function') config.onPick(opt.value);
+          closeSelect(true);
+        }, 160);
+      });
+
+      selectOptionsEl.appendChild(btn);
+    });
+
+    G.sheet.open = true;
+    G.sheet.onPick = config.onPick || null;
+
+    selectOverlay.classList.remove('hidden');
+    // Force reflow then add showing class for transition
+    void selectOverlay.offsetHeight;
+    requestAnimationFrame(() => selectOverlay.classList.add('showing'));
+  }
+
+  function closeSelect(animated) {
+    if (!G.sheet.open) return;
+    G.sheet.open = false;
+    selectOverlay.classList.remove('showing');
+    const delay = animated === false || !G.data.settings.animations ? 0 : 320;
+    setTimeout(() => {
+      selectOverlay.classList.add('hidden');
+      selectOptionsEl.innerHTML = '';
+      G.sheet.onPick = null;
+    }, delay);
+  }
+
+  // Backdrop dismissal
+  selectOverlay.querySelector('[data-dismiss]').addEventListener('click', () => {
+    haptic(6);
+    closeSelect(true);
+  });
+
+  /* ============================================================
+     CONFIRM DIALOG
+     ============================================================ */
+  const confirmOverlay = $('confirmOverlay');
+  const confirmTitleEl = $('confirmTitle');
+  const confirmMessageEl = $('confirmMessage');
+  const confirmActionsEl = $('confirmActions');
+
+  function openConfirm(config) {
+    if (G.confirm.open) return;
+    G.confirm.open = true;
+
+    confirmTitleEl.textContent = config.title || '';
+    confirmMessageEl.textContent = config.message || '';
+    confirmActionsEl.innerHTML = '';
+
+    (config.actions || [{ label: t('ok'), bold: true }]).forEach(action => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = action.label;
+      if (action.bold) btn.classList.add('bold');
+      if (action.destructive) btn.classList.add('destructive');
+      btn.addEventListener('click', () => {
+        haptic(8);
+        closeConfirm(true);
+        if (typeof action.onClick === 'function') {
+          setTimeout(action.onClick, 180);
+        }
+      });
+      confirmActionsEl.appendChild(btn);
+    });
+
+    confirmOverlay.classList.remove('hidden');
+    void confirmOverlay.offsetHeight;
+    requestAnimationFrame(() => confirmOverlay.classList.add('showing'));
+  }
+
+  function closeConfirm(animated) {
+    if (!G.confirm.open) return;
+    G.confirm.open = false;
+    confirmOverlay.classList.remove('showing');
+    const delay = animated === false || !G.data.settings.animations ? 0 : 280;
+    setTimeout(() => {
+      confirmOverlay.classList.add('hidden');
+      confirmActionsEl.innerHTML = '';
+    }, delay);
+  }
+
+  confirmOverlay.querySelector('[data-confirm-dismiss]').addEventListener('click', () => {
+    closeConfirm(true);
+  });
+
+  /* ============================================================
+     TOAST
+     ============================================================ */
+  let toastTO = null;
+  function showToast(msg) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('showing');
+    clearTimeout(toastTO);
+    toastTO = setTimeout(() => el.classList.remove('showing'), 1800);
+  }
+
+  /* ============================================================
+     COSMETICS
+     ============================================================ */
+  const COSMETICS = {
+    targets: [
+      { id: 'classic_circle', name: 'Classic Circle', price: 0, shape: 'circle' },
+      { id: 'ring', name: 'Ring', price: 150, shape: 'ring' },
+      { id: 'square', name: 'Square', price: 200, shape: 'square' },
+      { id: 'star', name: 'Star', price: 350, shape: 'star' },
+      { id: 'hexagon', name: 'Hexagon', price: 300, shape: 'hexagon' },
+      { id: 'pulse', name: 'Pulse', price: 450, shape: 'pulse' },
+      { id: 'neon_ring', name: 'Neon Ring', price: 600, shape: 'ring' },
+      { id: 'minimal', name: 'Minimal', price: 500, shape: 'minimal' }
+    ],
+    themes: [
+      { id: 'classic', name: 'Classic', price: 0, color: '#0A84FF' },
+      { id: 'ocean', name: 'Ocean', price: 120, color: '#00B4D8' },
+      { id: 'sunset', name: 'Sunset', price: 180, color: '#FF9500' },
+      { id: 'electric', name: 'Electric', price: 250, color: '#5856D6' },
+      { id: 'mono', name: 'Mono', price: 200, color: '#1C1C1E' },
+      { id: 'retro', name: 'Retro', price: 300, color: '#FF3B30' },
+      { id: 'soft', name: 'Soft', price: 280, color: '#AF52DE' },
+      { id: 'cosmic', name: 'Cosmic', price: 500, color: '#5E5CE6' }
+    ],
+    effects: [
+      { id: 'ripple', name: 'Ripple', price: 0, type: 'ring' },
+      { id: 'circle_burst', name: 'Circle Burst', price: 100, type: 'fill' },
+      { id: 'spark', name: 'Spark', price: 180, type: 'spark' },
+      { id: 'pulse', name: 'Pulse', price: 220, type: 'pulse' },
+      { id: 'ring_expansion', name: 'Ring Expansion', price: 280, type: 'ring' },
+      { id: 'soft_particles', name: 'Soft Particles', price: 400, type: 'particles' }
+    ],
+    buttons: [
+      { id: 'classic', name: 'Classic', price: 0, radius: '14px' },
+      { id: 'rounded', name: 'Rounded', price: 80, radius: '22px' },
+      { id: 'capsule', name: 'Capsule', price: 120, radius: '100px' },
+      { id: 'minimal', name: 'Minimal', price: 100, radius: '8px' },
+      { id: 'soft', name: 'Soft', price: 150, radius: '18px' }
+    ],
+    backgrounds: [
+      { id: 'clean_white', name: 'Clean White', price: 0, bg: '#FAFAFB' },
+      { id: 'soft_gray', name: 'Soft Gray', price: 60, bg: '#F2F2F5' },
+      { id: 'blue', name: 'Blue', price: 120, bg: '#EFF6FF' },
+      { id: 'dark', name: 'Dark', price: 100, bg: '#1C1C1E' },
+      { id: 'gradient', name: 'Gradient', price: 200, bg: 'linear-gradient(180deg, #FAFAFB 0%, #E5E5EA 100%)' },
+      { id: 'grid', name: 'Grid', price: 180, bg: 'repeating-linear-gradient(0deg, #FAFAFB 0px, #FAFAFB 28px, #EEEEF2 28px, #EEEEF2 29px)' },
+      { id: 'minimal_dots', name: 'Minimal Dots', price: 160, bg: 'radial-gradient(circle, #D1D1D6 1px, transparent 1px) 0 0 / 22px 22px, #FAFAFB' }
+    ]
+  };
+
+  const LEVEL_UNLOCKS = {
+    ring: 3, square: 5, star: 8, hexagon: 7, pulse: 10, neon_ring: 12, minimal: 14,
+    ocean: 2, sunset: 6, electric: 8, mono: 10, retro: 12, soft: 13, cosmic: 18,
+    circle_burst: 4, spark: 6, pulse_effect: 9, ring_expansion: 11, soft_particles: 15,
+    rounded: 2, capsule: 5, minimal_btn: 7, soft_btn: 9,
+    soft_gray: 2, blue: 4, dark: 6, gradient: 10, grid: 12, minimal_dots: 14
+  };
+
+  function findItem(id) {
+    for (const cat of Object.values(COSMETICS)) {
+      const f = cat.find(i => i.id === id);
+      if (f) return f;
+    }
+    return null;
+  }
+  const getPrice = (id) => { const it = findItem(id); return it ? it.price : 0; };
+  const isOwned = (id) => G.data.purchased.includes(id) || getPrice(id) === 0;
+  function isUnlocked(id) {
+    const req = LEVEL_UNLOCKS[id];
+    return !req || G.data.level >= req;
+  }
+  function eqKey(cat) {
+    return { targets: 'target', themes: 'theme', effects: 'effect', buttons: 'button', backgrounds: 'background' }[cat];
+  }
+  function getEquipped(cat) {
+    const k = eqKey(cat);
+    const val = G.data.equipped[k];
+    if (val && findItem(val)) return val;
+    return COSMETICS[cat][0].id;
+  }
+
+  /* ============================================================
+     ACHIEVEMENTS
+     ============================================================ */
+  const ACHIEVEMENTS = [
+    { id: 'first_tap', icon: 'hand', color: '#0A84FF', title: 'First Tap', desc: 'Tap your first target', reward: 10 },
+    { id: 'speed_demon', icon: 'bolt', color: '#FF9500', title: 'Speed Demon', desc: 'Score 30 in one round', reward: 50 },
+    { id: 'perfect_run', icon: 'star', color: '#FFCC00', title: 'Perfect Run', desc: 'Score 50 with no misses', reward: 100 },
+    { id: 'hundred_club', icon: 'hundred', color: '#34C759', title: '100 Club', desc: 'Reach a score of 100', reward: 200 },
+    { id: 'tap_master', icon: 'crown', color: '#AF52DE', title: 'Tap Master', desc: 'Score 150 in one round', reward: 300 },
+    { id: 'no_miss', icon: 'target', color: '#5E5CE6', title: 'No Miss', desc: 'Complete a round with zero misses', reward: 75 },
+    { id: 'high_score', icon: 'chart', color: '#FF3B30', title: 'High Score', desc: 'Beat your best score 5 times', reward: 150 }
+  ];
+
+  function checkAchievements() {
+    const a = G.data.achievements;
+    const g = G.game;
+    const newly = [];
+    const unlock = (id) => { if (!a[id]) { a[id] = true; newly.push(id); } };
+
+    if (G.data.stats.taps > 0) unlock('first_tap');
+    if (g.score >= 30) unlock('speed_demon');
+    if (g.score >= 50 && g.misses === 0 && g.hits >= 50) unlock('perfect_run');
+    if (g.score >= 100) unlock('hundred_club');
+    if (g.score >= 150) unlock('tap_master');
+    if (g.misses === 0 && g.hits >= 20) unlock('no_miss');
+    if (G.data.stats.games >= 5 && g.score >= G.data.best && g.score > 0) unlock('high_score');
+
+    newly.forEach(id => {
+      const ach = ACHIEVEMENTS.find(x => x.id === id);
+      if (ach) G.data.coins += ach.reward;
+    });
+    if (newly.length) save();
+    return newly;
+  }
+
+  /* ============================================================
+     PROGRESSION
+     ============================================================ */
+  function xpForLevel(l) {
+    if (l >= 20) return Infinity;
+    return Math.floor(100 * Math.pow(1.35, l - 1));
+  }
+  function addXp(amount) {
+    G.data.xp += amount;
+    while (G.data.level < 20 && G.data.xp >= xpForLevel(G.data.level)) {
+      G.data.xp -= xpForLevel(G.data.level);
+      G.data.level++;
+    }
+    save();
+  }
+  function addCoins(amount) {
+    G.data.coins += amount;
+    G.data.stats.totalCoins += amount;
+    save();
+  }
+
+  /* ============================================================
+     APPLY COSMETICS
+     ============================================================ */
+  function applyCosmetics() {
+    const eq = G.data.equipped;
+    const bg = findItem(eq.background);
+    const bgVal = bg ? bg.bg : '';
+    // Only apply background if not overridden by theme — default clean
+    const bgColor = bgVal || '';
+
+    document.body.style.background = '';
+    $('app').style.background = '';
+    document.querySelectorAll('.screen').forEach(s => { s.style.background = ''; });
+
+    // Apply button radius
+    const btn = findItem(eq.button);
+    const radius = btn ? btn.radius : '14px';
+    document.querySelectorAll('.btn-primary, .btn-secondary').forEach(b => {
+      b.style.borderRadius = radius;
+    });
+    document.querySelectorAll('.store-card-btn').forEach(b => {
+      b.style.borderRadius = Math.min(parseInt(radius), 100) + 'px';
+    });
+
+    if (G.data.settings.animations) document.body.classList.remove('no-anim');
+    else document.body.classList.add('no-anim');
+  }
+
+  function getThemeColor() {
+    const t = findItem(G.data.equipped.theme);
+    return t ? t.color : '#0A84FF';
+  }
+
+  /* ============================================================
+     HOME
+     ============================================================ */
+  function updateHome() {
+    $('homeBest').textContent = G.data.best;
+    $('homeLevel').textContent = G.data.level;
+    $('homeCoins').textContent = G.data.coins;
+  }
+
+  /* ============================================================
+     STORE UI
+     ============================================================ */
+  function renderStore() {
+    $('storeCoins').textContent = G.data.coins;
+    const cat = G.storeCat;
+    const items = COSMETICS[cat];
+    const grid = $('storeGrid');
+    grid.innerHTML = '';
+
+    items.forEach(item => {
+      const owned = isOwned(item.id);
+      const unlocked = isUnlocked(item.id);
+      const equipped = getEquipped(cat) === item.id;
+
+      const card = document.createElement('div');
+      card.className = 'store-card';
+
+      const preview = document.createElement('div');
+      preview.className = 'store-card-preview';
+      preview.appendChild(buildPreview(cat, item));
+
+      if (equipped) addBadge(preview, t('equipped'), 'owned');
+      else if (owned) addBadge(preview, t('owned'), 'owned');
+      else if (!unlocked) addBadge(preview, t('levelShort') + ' ' + LEVEL_UNLOCKS[item.id], 'level');
+      else if (item.price >= 300) addBadge(preview, 'Premium', 'premium');
+      else if (item.price === 0) addBadge(preview, 'Free', 'free');
+
+      card.appendChild(preview);
+
+      const body = document.createElement('div');
+      body.className = 'store-card-body';
+
+      const name = document.createElement('div');
+      name.className = 'store-card-name';
+      name.textContent = item.name;
+      body.appendChild(name);
+
+      const meta = document.createElement('div');
+      meta.className = 'store-card-meta';
+      meta.textContent = owned ? t('owned') : (unlocked ? item.price + ' ' + t('coinsShort') : t('levelShort') + ' ' + LEVEL_UNLOCKS[item.id]);
+      body.appendChild(meta);
+
+      const btn = document.createElement('button');
+      btn.className = 'store-card-btn';
+      if (equipped) { btn.classList.add('equipped'); btn.textContent = t('equipped'); }
+      else if (owned) {
+        btn.classList.add('equip'); btn.textContent = t('equip');
+        btn.addEventListener('click', () => equipItem(cat, item.id));
+      } else if (!unlocked) {
+        btn.classList.add('locked'); btn.textContent = t('locked');
+      } else {
+        btn.classList.add('buy'); btn.textContent = t('buy');
+        btn.addEventListener('click', () => tryBuy(cat, item));
+      }
+      body.appendChild(btn);
+      card.appendChild(body);
+      grid.appendChild(card);
+    });
+  }
+
+  function addBadge(parent, text, cls) {
+    const b = document.createElement('div');
+    b.className = 'badge ' + (cls || '');
+    b.textContent = text;
+    parent.appendChild(b);
+  }
+
+  function buildPreview(cat, item) {
+    const wrap = document.createElement('div');
+    const color = getThemeColor();
+
+    if (cat === 'targets') {
+      const s = 58;
+      wrap.style.width = s + 'px';
+      wrap.style.height = s + 'px';
+      const shape = document.createElement('div');
+      shape.style.width = s + 'px';
+      shape.style.height = s + 'px';
+      shape.className = 'shape-' + item.shape;
+      if (item.shape === 'ring') {
+        shape.style.border = '6px solid ' + color;
+        shape.style.background = 'transparent';
+      } else {
+        shape.style.background = color;
+      }
+      if (item.id === 'minimal') {
+        shape.style.opacity = '0.7';
+        shape.style.width = '38px';
+        shape.style.height = '38px';
+      }
+      wrap.style.display = 'flex';
+      wrap.style.alignItems = 'center';
+      wrap.style.justifyContent = 'center';
+      wrap.appendChild(shape);
+    } else if (cat === 'themes') {
+      const dot = document.createElement('div');
+      dot.style.width = '46px';
+      dot.style.height = '46px';
+      dot.style.borderRadius = '50%';
+      dot.style.background = item.color;
+      dot.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10), inset 0 0 0 1px rgba(255,255,255,0.25)';
+      wrap.appendChild(dot);
+    } else if (cat === 'effects') {
+      const ring = document.createElement('div');
+      ring.style.width = '44px';
+      ring.style.height = '44px';
+      ring.style.borderRadius = '50%';
+      if (item.type === 'fill') {
+        ring.style.background = color;
+        ring.style.opacity = '0.85';
+      } else if (item.type === 'ring') {
+        ring.style.border = '3px solid ' + color;
+      } else {
+        ring.style.border = '2px solid ' + color;
+        ring.style.boxShadow = '0 0 0 6px ' + hexA(color, 0.15);
+      }
+      wrap.appendChild(ring);
+    } else if (cat === 'buttons') {
+      const pill = document.createElement('div');
+      pill.style.width = '58px';
+      pill.style.height = '28px';
+      pill.style.background = color;
+      pill.style.borderRadius = item.radius;
+      wrap.appendChild(pill);
+    } else if (cat === 'backgrounds') {
+      const sw = document.createElement('div');
+      sw.style.width = '52px';
+      sw.style.height = '52px';
+      sw.style.borderRadius = '12px';
+      sw.style.background = item.bg;
+      sw.style.boxShadow = 'inset 0 0 0 1px rgba(60,60,67,0.10)';
+      wrap.appendChild(sw);
+    }
+    return wrap;
+  }
+
+  function hexA(hex, a) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  function tryBuy(cat, item) {
+    if (G.data.coins < item.price) {
+      showToast(t('notEnoughCoins'));
+      haptic(12);
+      return;
+    }
+    openConfirm({
+      title: item.name,
+      message: t('purchaseSheet') + ' ' + item.price + ' ' + t('purchaseQuestion'),
+      actions: [
+        { label: t('cancel') },
+        { label: t('buyConfirm'), bold: true, onClick: () => {
+          if (G.data.coins < item.price) { showToast(t('notEnoughCoins')); return; }
+          G.data.coins -= item.price;
+          G.data.purchased.push(item.id);
+          G.data.equipped[eqKey(cat)] = item.id;
+          save();
+          applyCosmetics();
+          renderStore();
+          updateHome();
+          haptic(18);
+          showToast(t('purchased'));
+        }}
+      ]
+    });
+  }
+
+  function equipItem(cat, id) {
+    G.data.equipped[eqKey(cat)] = id;
+    save();
+    applyCosmetics();
+    renderStore();
+    haptic(8);
+  }
+
+  /* ============================================================
+     STATS UI
+     ============================================================ */
+  function renderStats() {
+    const s = G.data.stats;
+    const avg = s.reactionSamples > 0 ? (s.totalReaction / s.reactionSamples) : 0;
+    $('statHeroBest').textContent = G.data.best;
+
+    const rows = [
+      [t('gamesPlayed'), s.games],
+      [t('totalTaps'), s.taps],
+      [t('successfulTaps'), s.hits],
+      [t('missedTaps'), s.misses],
+      [t('avgReaction'), avg > 0 ? Math.round(avg) + ' ms' : '—'],
+      [t('highestCombo'), s.bestCombo],
+      [t('totalCoins'), s.totalCoins],
+      [t('level'), G.data.level],
+      [t('xp'), G.data.xp + ' / ' + (xpForLevel(G.data.level) === Infinity ? 'MAX' : xpForLevel(G.data.level))]
+    ];
+
+    const list = $('statsList');
+    list.innerHTML = '';
+    rows.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'group-row no-icon';
+      row.innerHTML = `<div class="row-main"><div class="row-title">${label}</div></div><div class="row-value num">${value}</div>`;
+      list.appendChild(row);
+    });
+
+    const unlockedCount = ACHIEVEMENTS.filter(a => G.data.achievements[a.id]).length;
+    $('achievementsProgress').textContent = unlockedCount + ' ' + t('unlockedOf') + ' ' + ACHIEVEMENTS.length + ' ' + t('unlocked');
+  }
+
+  /* ============================================================
+     ACHIEVEMENTS UI
+     ============================================================ */
+  function renderAchievements() {
+    const list = $('achievementsList');
+    list.innerHTML = '';
+    ACHIEVEMENTS.forEach(a => {
+      const unlocked = !!G.data.achievements[a.id];
+      const row = document.createElement('div');
+      row.className = 'group-row achv-row' + (unlocked ? '' : ' locked');
+      row.innerHTML = `
+        <div class="row-icon" style="background: ${a.color};">${ICONS[a.icon] || ''}</div>
+        <div class="row-main">
+          <div class="row-title">${a.title}</div>
+          <div class="row-sub">${a.desc}</div>
+          <div class="achv-reward">+${a.reward} ${t('coinsShort')}</div>
+        </div>
+        <div class="achv-check">${unlocked ? ICONS.check : ''}</div>
+      `;
+      list.appendChild(row);
+    });
+  }
+
+  /* ============================================================
+     SETTINGS UI
+     ============================================================ */
+  function renderSettings() {
+    const s = G.data.settings;
+    ['sound', 'music', 'haptics', 'notifications', 'targetFeedback', 'animations'].forEach(k => {
+      const sw = $('sw-' + k);
+      if (sw) sw.classList.toggle('on', !!s[k]);
+    });
+    applyTranslations();
+  }
+
+  /* ============================================================
+     GAME LOGIC
+     ============================================================ */
+  const DIFFICULTY = {
+    easy:   { duration: 36, baseSize: 96, minSize: 62, ramp: 160 },
+    normal: { duration: 30, baseSize: 84, minSize: 50, ramp: 120 },
+    hard:   { duration: 24, baseSize: 74, minSize: 44, ramp: 90 }
+  };
+
+  function startGame() {
+    initAudio();
+    const diff = DIFFICULTY[G.data.settings.difficulty] || DIFFICULTY.normal;
+
+    const g = G.game;
+    g.active = false;
+    g.paused = false;
+    g.score = 0;
+    g.timeLeft = diff.duration;
+    g.duration = diff.duration;
+    g.combo = 0;
+    g.maxCombo = 0;
+    g.hits = 0;
+    g.misses = 0;
+    g.taps = 0;
+    g.reactionTotal = 0;
+    g.reactionCount = 0;
+    g.lastTap = 0;
+    g.difficulty = 0;
+
+    $('gameScore').textContent = '0';
+    $('gameTimer').textContent = diff.duration.toFixed(1);
+    $('timerBar').style.width = '100%';
+    $('timerBar').classList.remove('warn', 'danger');
+    $('gameCombo').classList.remove('show');
+
+    if (g.targetEl) { g.targetEl.remove(); g.targetEl = null; }
+    if (g.spawnTO) { clearTimeout(g.spawnTO); g.spawnTO = null; }
+
+    go('gameScreen', 'push');
+
+    let count = 3;
+    $('countdownNumber').textContent = count;
+    $('countdownOverlay').classList.remove('hidden');
+    sfxCount();
+    haptic(12);
+
+    g.countInt = setInterval(() => {
+      count--;
+      if (count > 0) {
+        $('countdownNumber').textContent = count;
+        const el = $('countdownNumber');
+        el.style.animation = 'none';
+        void el.offsetWidth;
+        el.style.animation = 'countPop 0.55s cubic-bezier(0.34, 1.4, 0.5, 1) both';
+        sfxCount();
+        haptic(12);
+      } else {
+        clearInterval(g.countInt);
+        g.countInt = null;
+        $('countdownOverlay').classList.add('hidden');
+        haptic(22);
+        g.active = true;
+        g.startTime = performance.now();
+        startTimer();
+        spawnTarget();
+      }
+    }, 650);
+  }
+
+  function startTimer() {
+    const g = G.game;
+    const start = performance.now();
+    const totalMs = g.duration * 1000;
+
+    g.timerInt = setInterval(() => {
+      if (!g.active) return;
+      if (g.paused) { start += 50; return; }
+      const elapsed = performance.now() - start;
+      g.timeLeft = Math.max(0, (totalMs - elapsed) / 1000);
+      const tleft = g.timeLeft;
+      $('gameTimer').textContent = tleft.toFixed(1);
+      const pct = tleft / g.duration * 100;
+      const bar = $('timerBar');
+      bar.style.width = pct + '%';
+      bar.classList.toggle('warn', pct <= 50 && pct > 20);
+      bar.classList.toggle('danger', pct <= 20);
+      if (g.timeLeft <= 0) endGame();
+    }, 50);
+  }
+
+  function spawnTarget() {
+    const g = G.game;
+    if (!g.active) return;
+    if (g.targetEl) { g.targetEl.remove(); g.targetEl = null; }
+
+    const area = $('gameArea');
+    const W = area.clientWidth;
+    const H = area.clientHeight;
+    if (W <= 0 || H <= 0) return;
+
+    const diff = DIFFICULTY[G.data.settings.difficulty] || DIFFICULTY.normal;
+    const rampT = Math.min(1, g.score / diff.ramp);
+    g.difficulty = rampT;
+
+    const size = Math.round(diff.baseSize - rampT * (diff.baseSize - diff.minSize));
+    const pad = Math.max(16, Math.round(size * 0.35));
+    const maxX = W - size - pad * 2;
+    const maxY = H - size - pad * 2;
+    if (maxX < 0 || maxY < 0) return;
+
+    const x = pad + Math.random() * maxX;
+    const y = pad + Math.random() * maxY;
+
+    const target = document.createElement('div');
+    target.className = 'target appear';
+
+    const shapeItem = findItem(G.data.equipped.target);
+    const shape = shapeItem ? shapeItem.shape : 'circle';
+    target.classList.add('shape-' + shape);
+
+    const color = getThemeColor();
+    if (shape === 'ring') {
+      target.style.border = '6px solid ' + color;
+      target.style.background = 'transparent';
+    } else {
+      target.style.background = color;
+    }
+    if (G.data.equipped.target === 'minimal') {
+      target.style.opacity = '0.75';
+    }
+
+    target.style.width = size + 'px';
+    target.style.height = size + 'px';
+    target.style.left = x + 'px';
+    target.style.top = y + 'px';
+    target.dataset.cx = (x + size / 2);
+    target.dataset.cy = (y + size / 2);
+    target.dataset.size = size;
+
+    target.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onHit(target);
+    }, { passive: false });
+
+    area.appendChild(target);
+    g.targetEl = target;
+  }
+
+  function onHit(target) {
+    const g = G.game;
+    if (!g.active || g.paused || !target || !target.parentNode) return;
+
+    const now = performance.now();
+    const rt = g.lastTap > 0 ? now - g.lastTap : 0;
+    if (rt > 0 && rt < 2500) { g.reactionTotal += rt; g.reactionCount++; }
+    g.lastTap = now;
+
+    g.score++;
+    g.combo++;
+    if (g.combo > g.maxCombo) g.maxCombo = g.combo;
+    g.hits++;
+    g.taps++;
+
+    const scoreEl = $('gameScore');
+    scoreEl.textContent = g.score;
+    scoreEl.classList.add('pop');
+    setTimeout(() => scoreEl.classList.remove('pop'), 140);
+
+    if (g.combo >= 3) {
+      const cEl = $('gameCombo');
+      cEl.textContent = t('combo') + ' ×' + g.combo;
+      cEl.classList.add('show');
+    }
+
+    G.data.stats.taps++;
+    G.data.stats.hits++;
+    if (g.maxCombo > G.data.stats.bestCombo) G.data.stats.bestCombo = g.maxCombo;
+    if (rt > 0 && rt < 2500) {
+      G.data.stats.totalReaction += rt;
+      G.data.stats.reactionSamples++;
+    }
+
+    sfxTap();
+    haptic(7);
+
+    target.classList.add('hit');
+    const cx = parseFloat(target.dataset.cx);
+    const cy = parseFloat(target.dataset.cy);
+    const size = parseFloat(target.dataset.size);
+    spawnEffect(cx, cy, size);
+
+    setTimeout(() => {
+      if (target.parentNode) target.remove();
+      if (g.targetEl === target) g.targetEl = null;
+    }, 160);
+
+    if (g.spawnTO) clearTimeout(g.spawnTO);
+    g.spawnTO = setTimeout(() => { if (g.active && !g.paused) spawnTarget(); }, 50);
+  }
+
+  function onMiss() {
+    const g = G.game;
+    if (!g.active || g.paused) return;
+    g.combo = 0;
+    g.misses++;
+    g.taps++;
+    G.data.stats.taps++;
+    G.data.stats.misses++;
+    sfxMiss();
+    haptic(5);
+    $('gameCombo').classList.remove('show');
+
+    const area = $('gameArea');
+    area.style.transition = 'background 0.14s ease';
+    area.style.background = 'rgba(255, 59, 48, 0.05)';
+    setTimeout(() => { area.style.background = 'transparent'; }, 130);
+  }
+
+  function spawnEffect(cx, cy, size) {
+    const effectItem = findItem(G.data.equipped.effect);
+    const type = effectItem ? effectItem.type : 'ring';
+    const color = getThemeColor();
+    const area = $('gameArea');
+
+    if (type === 'spark') {
+      for (let i = 0; i < 5; i++) {
+        const angle = (Math.PI * 2 / 5) * i;
+        const el = document.createElement('div');
+        el.className = 'hit-effect';
+        el.style.left = cx + 'px';
+        el.style.top = cy + 'px';
+        el.style.width = '7px';
+        el.style.height = '7px';
+        el.style.background = color;
+        el.style.animation = 'none';
+        area.appendChild(el);
+        const dx = Math.cos(angle) * 42;
+        const dy = Math.sin(angle) * 42;
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform 0.44s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.44s ease';
+          el.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px) scale(0.2)`;
+          el.style.opacity = '0';
+        });
+        setTimeout(() => el.remove(), 500);
+      }
+      return;
+    }
+
+    const el = document.createElement('div');
+    el.className = 'hit-effect';
+    el.style.left = cx + 'px';
+    el.style.top = cy + 'px';
+
+    if (type === 'fill') {
+      el.style.width = size + 'px'; el.style.height = size + 'px';
+      el.style.background = color; el.style.opacity = '0.30';
+    } else if (type === 'particles') {
+      el.style.width = size * 1.2 + 'px'; el.style.height = size * 1.2 + 'px';
+      el.style.background = hexA(color, 0.18);
+    } else {
+      el.style.width = size + 'px'; el.style.height = size + 'px';
+      el.style.border = '3px solid ' + color; el.style.background = 'transparent';
+    }
+    area.appendChild(el);
+    setTimeout(() => el.remove(), 550);
+
+    if (G.data.settings.targetFeedback) {
+      const pulse = document.createElement('div');
+      pulse.className = 'hit-effect';
+      pulse.style.left = cx + 'px';
+      pulse.style.top = cy + 'px';
+      pulse.style.width = size * 0.6 + 'px';
+      pulse.style.height = size * 0.6 + 'px';
+      pulse.style.border = '2px solid ' + color;
+      pulse.style.background = 'transparent';
+      pulse.style.opacity = '0.5';
+      area.appendChild(pulse);
+      setTimeout(() => pulse.remove(), 550);
+    }
+  }
+
+  $('gameArea').addEventListener('pointerdown', (e) => {
+    if (!G.game.active || G.game.paused) return;
+    if (e.target.closest('.target')) return;
+    if (G.game.targetEl) onMiss();
+  });
+
+  function endGame() {
+    const g = G.game;
+    if (!g.active) return;
+    g.active = false;
+    g.paused = false;
+
+    if (g.timerInt) { clearInterval(g.timerInt); g.timerInt = null; }
+    if (g.countInt) { clearInterval(g.countInt); g.countInt = null; }
+    if (g.spawnTO) { clearTimeout(g.spawnTO); g.spawnTO = null; }
+    if (g.targetEl) { g.targetEl.remove(); g.targetEl = null; }
+
+    const coinsEarned = Math.floor(g.score * 1.5) + Math.floor(g.maxCombo * 2);
+    const xpEarned = Math.floor(g.score * 2) + 10;
+    const accuracy = g.taps > 0 ? Math.round(g.hits / g.taps * 100) : 0;
+    const avgReaction = g.reactionCount > 0 ? Math.round(g.reactionTotal / g.reactionCount) : 0;
+
+    G.data.stats.games++;
+
+    const isNewBest = g.score > G.data.best;
+    if (isNewBest) G.data.best = g.score;
+
+    addCoins(coinsEarned);
+    addXp(xpEarned);
+    save();
+
+    const newly = checkAchievements();
+
+    sfxResult();
+    haptic(28);
+
+    $('resultScore').textContent = g.score;
+    $('resultBest').textContent = G.data.best;
+    $('resultAccuracy').textContent = accuracy + '%';
+    $('resultReaction').textContent = avgReaction > 0 ? avgReaction + ' ms' : '—';
+    $('resultMisses').textContent = g.misses;
+    $('resultCoins').textContent = '+' + coinsEarned;
+    $('resultXp').textContent = '+' + xpEarned;
+    $('newBestBadge').classList.toggle('hidden', !isNewBest);
+
+    go('resultScreen', 'replace');
+
+    if (newly.length) {
+      const first = ACHIEVEMENTS.find(a => a.id === newly[0]);
+      if (first) setTimeout(() => showToast(t('achievement') + ': ' + first.title), 700);
+    }
+  }
+
+  /* ============================================================
+     PAUSE / RESUME / ABANDON
+     ============================================================ */
+  function pauseGame() {
+    const g = G.game;
+    if (!g.active) return;
+    g.paused = true;
+    if (g.spawnTO) { clearTimeout(g.spawnTO); g.spawnTO = null; }
+    if (g.targetEl) { g.targetEl.style.pointerEvents = 'none'; }
+  }
+
+  function resumeGame() {
+    const g = G.game;
+    if (!g.active) return;
+    g.paused = false;
+    if (g.targetEl) { g.targetEl.style.pointerEvents = 'auto'; }
+    if (!g.targetEl) spawnTarget();
+  }
+
+  function abandonGame() {
+    const g = G.game;
+    g.active = false;
+    g.paused = false;
+    if (g.timerInt) { clearInterval(g.timerInt); g.timerInt = null; }
+    if (g.countInt) { clearInterval(g.countInt); g.countInt = null; }
+    if (g.spawnTO) { clearTimeout(g.spawnTO); g.spawnTO = null; }
+    if (g.targetEl) { g.targetEl.remove(); g.targetEl = null; }
+  }
+
+  /* ============================================================
+     LANGUAGE SELECTION
+     ============================================================ */
+  function openLanguageSheet() {
+    openSelect({
+      title: t('selectLanguage'),
+      options: [
+        {
+          value: 'en',
+          label: 'English',
+          selected: (G.data.settings.language || 'en') === 'en'
         },
-        ar: {
-          onboard1Headline: "شيء واحد يكفي.",
-          onboard1Sub: "انسَ قوائم المهام اللانهائية. اختر شيئًا واحدًا يهم اليوم.",
-          onboard2Headline: "اختر. افعل. انتهيت.",
-          stepChoose: "اختر",
-          stepChooseText: "اختر شيئًا واحدًا.",
-          stepDo: "افعل",
-          stepDoText: "أعطه انتباهك.",
-          stepDone: "انتهيت",
-          stepDoneText: "أنهِ يومك بإنجاز شيء ما.",
-          onboard3Headline: "ما هو الشيء الواحد اليوم؟",
-          firstTaskPlaceholder: "اكتب شيئًا واحدًا تريد إنجازه اليوم...",
-          howLong: "كم المدة؟ (اختياري)",
-          howLong2: "كم المدة؟ (اختياري)",
-          time5: "٥ دقائق",
-          time10: "١٠ دقائق",
-          time20: "٢٠ دقيقة",
-          time30: "٣٠+ دقيقة",
-          continue: "متابعة",
-          back: "‹ رجوع",
-          startMyDay: "ابدأ يومي",
-          skipForNow: "تخطي الآن",
-          greetingMorning: "صباح الخير",
-          greetingAfternoon: "مساء الخير",
-          greetingEvening: "مساء الخير",
-          todayLabel: "اليوم",
-          complete: "إكمال",
-          doneTitle: "تم.",
-          doneSub: "لقد أنجزت شيئك الواحد اليوم.",
-          emptyTodayTitle: "يومك يبدأ بشيء واحد.",
-          emptyTodaySub: "اختر شيئًا يستحق فعله اليوم.",
-          chooseOneThing: "اختر شيئًا واحدًا",
-          historyTitle: "تقدمك",
-          noHistoryTitle: "لا يوجد سجل بعد.",
-          noHistorySub: "أكمل أول شيء واحد لتبدأ بناء سجلك.",
-          thingsCompleted: "أشياء مكتملة",
-          activeDays: "أيام نشطة",
-          currentStreak: "السلسلة الحالية",
-          last14Days: "آخر ١٤ يومًا",
-          yourName: "اسمك",
-          oneThingMember: "عضو One Thing",
-          name: "الاسم",
-          notSet: "غير محدد",
-          appearance: "المظهر",
-          appearanceLight: "فاتح",
-          appearanceDark: "داكن",
-          appearanceSystem: "النظام",
-          language: "اللغة",
-          langEnglish: "English",
-          langArabic: "العربية",
-          notifications: "الإشعارات",
-          off: "معطل",
-          on: "مفعل",
-          reminderTime: "وقت التذكير",
-          support: "الدعم",
-          contactSupport: "اتصل بالدعم",
-          about: "حول",
-          tagline: "يوم واحد. شيء واحد.",
-          navToday: "اليوم",
-          navHistory: "السجل",
-          navProfile: "الملف الشخصي",
-          modalTitle: "ما هو الشيء الواحد؟",
-          modalSub: "اختر شيئًا يستحق فعله اليوم.",
-          modalPlaceholder: "اكتب شيئًا واحدًا...",
-          addOneThing: "أضف شيئًا واحدًا",
-          cancel: "إلغاء",
-          dayStreak: "يوم متتالي",
-          days: "أيام",
-          day: "يوم",
-          thingCompleted: "شيء مكتمل",
-          thingsCompletedLower: "أشياء مكتملة",
-          enterName: "أدخل اسمك:",
-          enterReminderTime: "أدخل وقت التذكير (مثال: ٩:٠٠ ص):",
-          chooseAppearance: "اختر المظهر",
-          chooseLanguage: "اختر اللغة",
-          noTaskForDay: "لا توجد مهمة مسجلة لهذا اليوم.",
-          completedOn: "مكتمل"
+        {
+          value: 'ar',
+          label: 'العربية',
+          selected: (G.data.settings.language || 'en') === 'ar'
         }
-      };
-
-      // ================================================================
-      // STATE
-      // ================================================================
-      const STORAGE_KEY = 'one_thing_app_state_v2';
-
-      let state = {
-        onboardingComplete: false,
-        userName: null,
-        currentTask: null,
-        completedDates: [],
-        totalCompleted: 0,
-        activeDays: 0,
-        streak: 0,
-        reminderTime: '9:00 AM',
-        notificationsEnabled: false,
-        language: 'en',
-        appearance: 'system'
-      };
-
-      let selectedCalendarDate = null;
-      let calendarDisplayMonth = new Date().getMonth();
-      let calendarDisplayYear = new Date().getFullYear();
-
-      function loadState() {
-        try {
-          const stored = localStorage.getItem(STORAGE_KEY);
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            state = { ...state, ...parsed };
-          }
-        } catch (e) { /* ignore */ }
+      ],
+      onPick: (val) => {
+        if (val === G.data.settings.language) return;
+        G.data.settings.language = val;
+        save();
+        applyDirection();
+        applyTranslations();
+        renderSettings();
+        // Re-render screens whose visible strings depend on language
+        renderStats();
+        renderAchievements();
+        if (G.stack.indexOf('storeScreen') !== -1) renderStore();
       }
+    });
+  }
 
-      function saveState() {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        } catch (e) { /* ignore */ }
-      }
-
-      // ================================================================
-      // DATE HELPERS
-      // ================================================================
-      function todayStr() {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      }
-
-      function formatDateKey(year, month, day) {
-        return `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      }
-
-      function computeStreak() {
-        if (!state.completedDates.length) return 0;
-        const sorted = [...state.completedDates].sort().reverse();
-        const today = todayStr();
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
-
-        const mostRecent = sorted[0];
-        if (mostRecent !== today && mostRecent !== yesterdayStr) return 0;
-
-        let streak = 1;
-        for (let i = 1; i < sorted.length; i++) {
-          const prev = new Date(sorted[i-1] + 'T12:00:00');
-          const curr = new Date(sorted[i] + 'T12:00:00');
-          const diffDays = Math.round((prev - curr) / (1000 * 60 * 60 * 24));
-          if (diffDays === 1) streak++;
-          else break;
+  /* ============================================================
+     APPEARANCE SELECTION
+     ============================================================ */
+  function openAppearanceSheet() {
+    openSelect({
+      title: t('selectAppearance'),
+      options: [
+        {
+          value: 'light',
+          label: t('appearanceLight'),
+          preview: 'light',
+          selected: (G.data.settings.appearance || 'system') === 'light'
+        },
+        {
+          value: 'dark',
+          label: t('appearanceDark'),
+          preview: 'dark',
+          selected: (G.data.settings.appearance || 'system') === 'dark'
+        },
+        {
+          value: 'system',
+          label: t('appearanceSystem'),
+          sub: 'Follows device settings',
+          preview: 'system',
+          selected: (G.data.settings.appearance || 'system') === 'system'
         }
-        return streak;
-      }
-
-      function recomputeStats() {
-        state.totalCompleted = state.completedDates.length;
-        state.activeDays = new Set(state.completedDates).size;
-        state.streak = computeStreak();
-      }
-
-      // ================================================================
-      // THEME
-      // ================================================================
-      function applyTheme() {
-        const root = document.documentElement;
-        let theme = state.appearance;
-
-        if (theme === 'system') {
-          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          theme = prefersDark ? 'dark' : 'light';
-        }
-
-        root.setAttribute('data-theme', theme);
-        root.setAttribute('lang', state.language);
-        root.setAttribute('dir', state.language === 'ar' ? 'rtl' : 'ltr');
-      }
-
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        if (state.appearance === 'system') applyTheme();
-      });
-
-      // ================================================================
-      // TRANSLATION
-      // ================================================================
-      function t(key) {
-        return TRANSLATIONS[state.language]?.[key] || TRANSLATIONS.en[key] || key;
-      }
-
-      function applyTranslations() {
-        document.querySelectorAll('[data-i18n]').forEach(el => {
-          const key = el.dataset.i18n;
-          el.textContent = t(key);
-        });
-        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-          const key = el.dataset.i18nPlaceholder;
-          el.placeholder = t(key);
-        });
-      }
-
-      // ================================================================
-      // DOM REFS
-      // ================================================================
-      const appContent = document.getElementById('appContent');
-      const onboarding = document.getElementById('onboarding');
-      const bottomNav = document.getElementById('bottomNav');
-      const splashScreen = document.getElementById('splashScreen');
-
-      const onboardScreen1 = document.getElementById('onboardScreen1');
-      const onboardScreen2 = document.getElementById('onboardScreen2');
-      const onboardScreen3 = document.getElementById('onboardScreen3');
-      const onboardFooter = document.getElementById('onboardFooter');
-      const progressDots = document.getElementById('progressDots');
-      const firstTaskInput = document.getElementById('firstTaskInput');
-      const timeOptions = document.getElementById('timeOptions');
-
-      const todayScreen = document.getElementById('todayScreen');
-      const historyScreen = document.getElementById('historyScreen');
-      const profileScreen = document.getElementById('profileScreen');
-
-      const taskActiveState = document.getElementById('taskActiveState');
-      const taskCompletedState = document.getElementById('taskCompletedState');
-      const emptyTodayState = document.getElementById('emptyTodayState');
-      const completeBtn = document.getElementById('completeBtn');
-      const taskTitle = document.getElementById('taskTitle');
-      const taskMeta = document.getElementById('taskMeta');
-      const chooseOneThingBtn = document.getElementById('chooseOneThingBtn');
-      const greetingText = document.getElementById('greetingText');
-
-      const flameWrapper = document.getElementById('flameWrapper');
-      const streakNumber = document.getElementById('streakNumber');
-      const streakLabel = document.getElementById('streakLabel');
-      const flameWrapperCompleted = document.getElementById('flameWrapperCompleted');
-      const streakNumberCompleted = document.getElementById('streakNumberCompleted');
-      const streakLabelCompleted = document.getElementById('streakLabelCompleted');
-
-      const statTotalCompleted = document.getElementById('statTotalCompleted');
-      const statActiveDays = document.getElementById('statActiveDays');
-      const statStreak = document.getElementById('statStreak');
-      const calendarMonth = document.getElementById('calendarMonth');
-      const calendarGrid = document.getElementById('calendarGrid');
-      const prevMonthBtn = document.getElementById('prevMonthBtn');
-      const nextMonthBtn = document.getElementById('nextMonthBtn');
-      const dayDetail = document.getElementById('dayDetail');
-      const historyEmptyState = document.getElementById('historyEmptyState');
-      const calendarContainer = document.getElementById('calendarContainer');
-      const historyStats = document.getElementById('historyStats');
-
-      const profileStreak = document.getElementById('profileStreak');
-      const profileTotalCompleted = document.getElementById('profileTotalCompleted');
-      const profileActiveDays = document.getElementById('profileActiveDays');
-      const profileName = document.getElementById('profileName');
-      const profileAvatar = document.getElementById('profileAvatar');
-      const profileNameValue = document.getElementById('profileNameValue');
-      const appearanceValue = document.getElementById('appearanceValue');
-      const languageValue = document.getElementById('languageValue');
-      const notificationValue = document.getElementById('notificationValue');
-      const reminderTimeValue = document.getElementById('reminderTimeValue');
-
-      const taskModal = document.getElementById('taskModal');
-      const modalTaskInput = document.getElementById('modalTaskInput');
-      const modalTimeOptions = document.getElementById('modalTimeOptions');
-      const modalAddBtn = document.getElementById('modalAddBtn');
-      const modalCancelBtn = document.getElementById('modalCancelBtn');
-
-      // ================================================================
-      // NAVIGATION STATE
-      // ================================================================
-      let activeTab = 'today';
-      let isOnboardingActive = false;
-
-      // ================================================================
-      // ONBOARDING
-      // ================================================================
-      let onboardStep = 1;
-      let selectedTime = null;
-      let modalSelectedTime = null;
-
-      function updateProgressDots() {
-        const dots = progressDots.querySelectorAll('.progress-dot');
-        dots.forEach((dot, i) => {
-          dot.classList.toggle('active', i === onboardStep - 1);
-        });
-      }
-
-      function renderOnboardFooter() {
-        onboardFooter.innerHTML = '';
-        if (onboardStep === 1) {
-          const btn = document.createElement('button');
-          btn.className = 'btn-primary';
-          btn.textContent = t('continue');
-          btn.onclick = () => goToOnboardStep(2);
-          onboardFooter.appendChild(btn);
-        } else if (onboardStep === 2) {
-          const btn = document.createElement('button');
-          btn.className = 'btn-primary';
-          btn.textContent = t('continue');
-          btn.onclick = () => goToOnboardStep(3);
-          onboardFooter.appendChild(btn);
-          const back = document.createElement('button');
-          back.className = 'back-button';
-          back.textContent = t('back');
-          back.onclick = () => goToOnboardStep(1);
-          onboardFooter.appendChild(back);
-        } else if (onboardStep === 3) {
-          const btn = document.createElement('button');
-          btn.className = 'btn-primary';
-          btn.textContent = t('startMyDay');
-          btn.onclick = () => finishOnboarding(false);
-          onboardFooter.appendChild(btn);
-          const skip = document.createElement('button');
-          skip.className = 'btn-secondary';
-          skip.textContent = t('skipForNow');
-          skip.onclick = () => finishOnboarding(true);
-          onboardFooter.appendChild(skip);
-          const back = document.createElement('button');
-          back.className = 'back-button';
-          back.textContent = t('back');
-          back.onclick = () => goToOnboardStep(2);
-          onboardFooter.appendChild(back);
-        }
-      }
-
-      function goToOnboardStep(step) {
-        onboardStep = step;
-        onboardScreen1.classList.add('hidden');
-        onboardScreen2.classList.add('hidden');
-        onboardScreen3.classList.add('hidden');
-        if (step === 1) onboardScreen1.classList.remove('hidden');
-        else if (step === 2) onboardScreen2.classList.remove('hidden');
-        else if (step === 3) onboardScreen3.classList.remove('hidden');
-        updateProgressDots();
-        renderOnboardFooter();
-      }
-
-      timeOptions.addEventListener('click', (e) => {
-        const opt = e.target.closest('.time-option');
-        if (!opt) return;
-        timeOptions.querySelectorAll('.time-option').forEach(el => el.classList.remove('selected'));
-        opt.classList.add('selected');
-        selectedTime = opt.dataset.time;
-      });
-
-      function finishOnboarding(skipped) {
-        const taskTitleVal = firstTaskInput.value.trim();
-        if (!skipped && taskTitleVal) {
-          state.currentTask = {
-            title: taskTitleVal,
-            time: selectedTime || null
-          };
-        } else {
-          state.currentTask = null;
-        }
-        state.onboardingComplete = true;
-        saveState();
-
-        isOnboardingActive = false;
-        onboarding.classList.add('hidden');
-        appContent.style.display = 'flex';
-        bottomNav.style.display = 'flex';
-
-        recomputeStats();
-        renderToday();
-        renderHistory();
-        renderProfile();
+      ],
+      onPick: (val) => {
+        G.data.settings.appearance = val;
+        save();
+        applyAppearance();
         applyTranslations();
       }
+    });
+  }
 
-      // ================================================================
-      // REALISTIC FLAME IGNITION ANIMATION
-      // ================================================================
-      function igniteFlame(wrapper, streakNum, streakLbl, streakCount, isFirstTime) {
-        if (!wrapper) return;
-
-        if (streakNum) streakNum.textContent = streakCount;
-        if (streakLbl) {
-          streakLbl.textContent = t('dayStreak');
-        }
-
-        if (isFirstTime) {
-          wrapper.classList.remove('ignited', 'flare', 'inactive');
-          wrapper.classList.add('igniting');
-
-          createSparks(wrapper, 6);
-
-          setTimeout(() => {
-            wrapper.classList.remove('igniting');
-            wrapper.classList.add('ignited');
-          }, 900);
-        } else {
-          wrapper.classList.remove('igniting');
-          wrapper.classList.add('ignited', 'flare');
-          createSparks(wrapper, 2);
-          setTimeout(() => {
-            wrapper.classList.remove('flare');
-          }, 500);
-        }
-
-        if (streakNum) {
-          streakNum.classList.remove('updating');
-          void streakNum.offsetWidth;
-          streakNum.classList.add('updating');
-          setTimeout(() => streakNum.classList.remove('updating'), 400);
-        }
-      }
-
-      function createSparks(wrapper, count) {
-        for (let i = 0; i < count; i++) {
-          const spark = document.createElement('div');
-          spark.className = 'spark';
-          const angle = (Math.PI * 0.6 * i) / count - Math.PI * 0.3 + (Math.random() - 0.5) * 0.5;
-          const distance = 10 + Math.random() * 20;
-          const x = Math.sin(angle) * distance;
-          const y = -Math.cos(angle) * distance - 10;
-          spark.style.setProperty('--spark-x', x + 'px');
-          spark.style.setProperty('--spark-y', y + 'px');
-          spark.style.left = '50%';
-          spark.style.top = '50%';
-          spark.style.background = i % 3 === 0 ? 'var(--flame-core)' : (i % 3 === 1 ? 'var(--flame-inner)' : 'var(--flame-mid-2)');
-          spark.style.width = (2 + Math.random() * 2) + 'px';
-          spark.style.height = spark.style.width;
-          wrapper.appendChild(spark);
-
-          requestAnimationFrame(() => {
-            spark.classList.add('animate');
-          });
-
-          setTimeout(() => {
-            if (spark.parentNode) spark.parentNode.removeChild(spark);
-          }, 1100);
-        }
-      }
-
-      // ================================================================
-      // RENDER TODAY
-      // ================================================================
-      function renderToday() {
-        const hour = new Date().getHours();
-        let greetingKey = 'greetingMorning';
-        if (hour >= 12 && hour < 18) greetingKey = 'greetingAfternoon';
-        else if (hour >= 18) greetingKey = 'greetingEvening';
-        greetingText.textContent = t(greetingKey);
-
-        const hasTask = state.currentTask && state.currentTask.title;
-        const isCompletedToday = state.completedDates.includes(todayStr());
-        const streakCount = state.streak;
-
-        taskActiveState.classList.add('hidden');
-        taskCompletedState.classList.add('hidden');
-        emptyTodayState.classList.add('hidden');
-
-        // Update streak flame in the upper area
-        if (streakCount > 0) {
-          flameWrapper.classList.add('ignited');
-          flameWrapper.classList.remove('inactive');
-        } else {
-          flameWrapper.classList.remove('ignited');
-          flameWrapper.classList.add('inactive');
-        }
-        streakNumber.textContent = streakCount;
-        streakLabel.textContent = t('dayStreak');
-
-        if (isCompletedToday) {
-          taskCompletedState.classList.remove('hidden');
-          if (flameWrapperCompleted) {
-            flameWrapperCompleted.classList.add('ignited');
-            flameWrapperCompleted.classList.remove('inactive');
-          }
-          streakNumberCompleted.textContent = streakCount;
-          streakLabelCompleted.textContent = t('dayStreak');
-        } else if (hasTask) {
-          taskActiveState.classList.remove('hidden');
-          taskTitle.textContent = state.currentTask.title;
-          taskMeta.textContent = state.currentTask.time || '';
-        } else {
-          emptyTodayState.classList.remove('hidden');
-        }
-      }
-
-      completeBtn.addEventListener('click', () => {
-        if (!state.currentTask) return;
-
-        const wasFirstCompletion = state.completedDates.length === 0;
-
-        const today = todayStr();
-        if (!state.completedDates.includes(today)) {
-          state.completedDates.push(today);
-        }
-        recomputeStats();
-        saveState();
-
-        completeBtn.style.transform = 'scale(0.96)';
-        setTimeout(() => {
-          completeBtn.style.transform = '';
-          renderToday();
-          renderHistory();
-          renderProfile();
-
-          const wrapper = document.getElementById('flameWrapperCompleted');
-          const num = document.getElementById('streakNumberCompleted');
-          const lbl = document.getElementById('streakLabelCompleted');
-          if (wrapper) {
-            igniteFlame(wrapper, num, lbl, state.streak, wasFirstCompletion);
-          }
-        }, 120);
-      });
-
-      chooseOneThingBtn.addEventListener('click', () => {
-        modalTaskInput.value = '';
-        modalSelectedTime = null;
-        modalTimeOptions.querySelectorAll('.time-option').forEach(el => el.classList.remove('selected'));
-        taskModal.classList.add('open');
-        setTimeout(() => modalTaskInput.focus(), 300);
-      });
-
-      modalTimeOptions.addEventListener('click', (e) => {
-        const opt = e.target.closest('.time-option');
-        if (!opt) return;
-        modalTimeOptions.querySelectorAll('.time-option').forEach(el => el.classList.remove('selected'));
-        opt.classList.add('selected');
-        modalSelectedTime = opt.dataset.time;
-      });
-
-      modalAddBtn.addEventListener('click', () => {
-        const title = modalTaskInput.value.trim();
-        if (!title) { modalTaskInput.focus(); return; }
-        state.currentTask = { title: title, time: modalSelectedTime || null };
-        saveState();
-        taskModal.classList.remove('open');
-        renderToday();
-      });
-
-      modalCancelBtn.addEventListener('click', () => taskModal.classList.remove('open'));
-      taskModal.addEventListener('click', (e) => {
-        if (e.target === taskModal) taskModal.classList.remove('open');
-      });
-
-      // ================================================================
-      // RENDER HISTORY CALENDAR
-      // ================================================================
-      function renderCalendar() {
-        const year = calendarDisplayYear;
-        const month = calendarDisplayMonth;
-
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                           'July', 'August', 'September', 'October', 'November', 'December'];
-        calendarMonth.textContent = `${monthNames[month]} ${year}`;
-
-        const firstDay = new Date(year, month, 1).getDay();
-        const startOffset = (firstDay === 0) ? 6 : firstDay - 1;
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-        calendarGrid.innerHTML = '';
-
-        const prevMonthDays = new Date(year, month, 0).getDate();
-        for (let i = startOffset - 1; i >= 0; i--) {
-          const dayNum = prevMonthDays - i;
-          const cell = document.createElement('div');
-          cell.className = 'calendar-day-cell other-month';
-          cell.textContent = dayNum;
-          calendarGrid.appendChild(cell);
-        }
-
-        for (let day = 1; day <= daysInMonth; day++) {
-          const dateKey = formatDateKey(year, month, day);
-          const isCompleted = state.completedDates.includes(dateKey);
-          const isToday = dateKey === todayStr();
-
-          const cell = document.createElement('div');
-          cell.className = 'calendar-day-cell';
-          cell.textContent = day;
-          cell.dataset.date = dateKey;
-
-          if (isCompleted) {
-            cell.classList.add('completed');
-
-            const prevDate = new Date(year, month, day - 1);
-            const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2,'0')}-${String(prevDate.getDate()).padStart(2,'0')}`;
-            const nextDate = new Date(year, month, day + 1);
-            const nextKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth()+1).padStart(2,'0')}-${String(nextDate.getDate()).padStart(2,'0')}`;
-
-            const prevCompleted = state.completedDates.includes(prevKey);
-            const nextCompleted = state.completedDates.includes(nextKey);
-
-            if (prevCompleted && nextCompleted) {
-              cell.classList.add('streak-middle');
-            } else if (prevCompleted) {
-              cell.classList.add('streak-end');
-            } else if (nextCompleted) {
-              cell.classList.add('streak-start');
-            }
-
-            const dot = document.createElement('div');
-            dot.className = 'day-flame-dot';
-            cell.appendChild(dot);
-          }
-
-          if (isToday) {
-            cell.classList.add('today');
-          }
-
-          if (selectedCalendarDate === dateKey) {
-            cell.classList.add('selected');
-          }
-
-          cell.addEventListener('click', () => {
-            selectedCalendarDate = dateKey;
-            renderCalendar();
-            renderDayDetail(dateKey);
-          });
-
-          calendarGrid.appendChild(cell);
-        }
-
-        const totalCells = startOffset + daysInMonth;
-        const remainingCells = (7 - (totalCells % 7)) % 7;
-        for (let i = 1; i <= remainingCells; i++) {
-          const cell = document.createElement('div');
-          cell.className = 'calendar-day-cell other-month';
-          cell.textContent = i;
-          calendarGrid.appendChild(cell);
-        }
-
-        const now = new Date();
-        if (year === now.getFullYear() && month === now.getMonth()) {
-          nextMonthBtn.disabled = true;
-        } else {
-          nextMonthBtn.disabled = false;
-        }
-      }
-
-      function renderDayDetail(dateKey) {
-        const isCompleted = state.completedDates.includes(dateKey);
-        const date = new Date(dateKey + 'T12:00:00');
-        const formattedDate = date.toLocaleDateString(state.language === 'ar' ? 'ar-EG' : 'en-US', {
-          weekday: 'long', month: 'long', day: 'numeric'
-        });
-
-        if (isCompleted) {
-          dayDetail.innerHTML = `
-            <div class="day-detail">
-              <div class="day-detail-title">${formattedDate}</div>
-              <div class="day-detail-sub" style="color: var(--flame-outer-1);">${t('completedOn')} ✓</div>
-            </div>
-          `;
-        } else {
-          dayDetail.innerHTML = `
-            <div class="day-detail">
-              <div class="day-detail-title">${formattedDate}</div>
-              <div class="day-detail-sub">${t('noTaskForDay')}</div>
-            </div>
-          `;
-        }
-      }
-
-      prevMonthBtn.addEventListener('click', () => {
-        calendarDisplayMonth--;
-        if (calendarDisplayMonth < 0) {
-          calendarDisplayMonth = 11;
-          calendarDisplayYear--;
-        }
-        selectedCalendarDate = null;
-        dayDetail.innerHTML = '';
-        renderCalendar();
-      });
-
-      nextMonthBtn.addEventListener('click', () => {
-        const now = new Date();
-        if (calendarDisplayYear === now.getFullYear() && calendarDisplayMonth === now.getMonth()) {
-          return;
-        }
-        calendarDisplayMonth++;
-        if (calendarDisplayMonth > 11) {
-          calendarDisplayMonth = 0;
-          calendarDisplayYear++;
-        }
-        selectedCalendarDate = null;
-        dayDetail.innerHTML = '';
-        renderCalendar();
-      });
-
-      // ================================================================
-      // RENDER HISTORY
-      // ================================================================
-      function renderHistory() {
-        const hasActivity = state.completedDates.length > 0;
-
-        if (!hasActivity) {
-          historyStats.classList.add('hidden');
-          calendarContainer.classList.add('hidden');
-          historyEmptyState.classList.remove('hidden');
-          return;
-        }
-
-        historyStats.classList.remove('hidden');
-        calendarContainer.classList.remove('hidden');
-        historyEmptyState.classList.add('hidden');
-
-        statTotalCompleted.textContent = state.totalCompleted;
-        statActiveDays.textContent = state.activeDays;
-        statStreak.textContent = state.streak;
-
-        renderCalendar();
-      }
-
-      // ================================================================
-      // RENDER PROFILE
-      // ================================================================
-      function renderProfile() {
-        if (state.userName) {
-          profileName.textContent = state.userName;
-          profileAvatar.textContent = state.userName.charAt(0).toUpperCase();
-          profileNameValue.innerHTML = state.userName + ' <span class="chevron">›</span>';
-        } else {
-          profileName.textContent = t('yourName');
-          profileAvatar.textContent = '?';
-          profileNameValue.innerHTML = `${t('notSet')} <span class="chevron">›</span>`;
-        }
-
-        const streak = state.streak;
-        profileStreak.textContent = streak === 1 ? `1 ${t('day')}` : `${streak} ${t('days')}`;
-        profileTotalCompleted.textContent = state.totalCompleted;
-        profileActiveDays.textContent = state.activeDays;
-
-        let appearanceLabel = t('appearanceSystem');
-        if (state.appearance === 'light') appearanceLabel = t('appearanceLight');
-        else if (state.appearance === 'dark') appearanceLabel = t('appearanceDark');
-        appearanceValue.innerHTML = appearanceLabel + ' <span class="chevron">›</span>';
-
-        const langLabel = state.language === 'ar' ? t('langArabic') : t('langEnglish');
-        languageValue.innerHTML = langLabel + ' <span class="chevron">›</span>';
-
-        notificationValue.innerHTML = (state.notificationsEnabled ? t('on') : t('off')) + ' <span class="chevron">›</span>';
-        reminderTimeValue.innerHTML = state.reminderTime + ' <span class="chevron">›</span>';
-      }
-
-      // ================================================================
-      // NAVIGATION
-      // ================================================================
-      function setActiveTab(tab) {
-        if (activeTab === tab) return;
-        activeTab = tab;
-
-        todayScreen.classList.add('hidden');
-        historyScreen.classList.add('hidden');
-        profileScreen.classList.add('hidden');
-        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-
-        if (tab === 'today') {
-          todayScreen.classList.remove('hidden');
-          document.getElementById('navToday').classList.add('active');
-          renderToday();
-        } else if (tab === 'history') {
-          historyScreen.classList.remove('hidden');
-          document.getElementById('navHistory').classList.add('active');
-          renderHistory();
-        } else if (tab === 'profile') {
-          profileScreen.classList.remove('hidden');
-          document.getElementById('navProfile').classList.add('active');
-          renderProfile();
-        }
-      }
-
-      document.getElementById('navToday').addEventListener('click', () => setActiveTab('today'));
-      document.getElementById('navHistory').addEventListener('click', () => setActiveTab('history'));
-      document.getElementById('navProfile').addEventListener('click', () => setActiveTab('profile'));
-
-      // Edit name
-      document.getElementById('editNameRow').addEventListener('click', () => {
-        const name = prompt(t('enterName'));
-        if (name !== null && name.trim()) {
-          state.userName = name.trim();
-          saveState();
-          renderProfile();
-        }
-      });
-
-      // Appearance
-      document.getElementById('appearanceRow').addEventListener('click', () => {
-        const options = [t('appearanceLight'), t('appearanceDark'), t('appearanceSystem')];
-        const choice = prompt(t('chooseAppearance') + '\n1. ' + options[0] + '\n2. ' + options[1] + '\n3. ' + options[2]);
-        if (choice === '1') state.appearance = 'light';
-        else if (choice === '2') state.appearance = 'dark';
-        else if (choice === '3') state.appearance = 'system';
-        else return;
-        saveState();
-        applyTheme();
-        renderProfile();
-      });
-
-      // Language
-      document.getElementById('languageRow').addEventListener('click', () => {
-        const choice = prompt(t('chooseLanguage') + '\n1. English\n2. العربية');
-        if (choice === '1') state.language = 'en';
-        else if (choice === '2') state.language = 'ar';
-        else return;
-        saveState();
-        applyTheme();
+  /* ============================================================
+     DIFFICULTY SELECTION
+     ============================================================ */
+  function openDifficultySheet() {
+    openSelect({
+      title: t('selectDifficulty'),
+      options: [
+        { value: 'easy',   label: t('difficultyEasy'),   selected: G.data.settings.difficulty === 'easy' },
+        { value: 'normal', label: t('difficultyNormal'), selected: G.data.settings.difficulty === 'normal' },
+        { value: 'hard',   label: t('difficultyHard'),   selected: G.data.settings.difficulty === 'hard' }
+      ],
+      onPick: (val) => {
+        G.data.settings.difficulty = val;
+        save();
         applyTranslations();
-        renderToday();
-        renderHistory();
-        renderProfile();
-      });
-
-      // Support
-      document.getElementById('supportRow').addEventListener('click', () => {
-        window.location.href = 'mailto:ahmedp7918@gmail.com?subject=One%20Thing%20Support';
-      });
-
-      // Notifications
-      document.getElementById('notificationRow').addEventListener('click', () => {
-        state.notificationsEnabled = !state.notificationsEnabled;
-        saveState();
-        renderProfile();
-      });
-
-      // Reminder time
-      document.getElementById('reminderTimeRow').addEventListener('click', () => {
-        const time = prompt(t('enterReminderTime'), state.reminderTime);
-        if (time && time.trim()) {
-          state.reminderTime = time.trim();
-          saveState();
-          renderProfile();
-        }
-      });
-
-      // ================================================================
-      // BACK NAVIGATION
-      // ================================================================
-      window.addEventListener('popstate', function(event) {
-        if (document.activeElement && document.activeElement.blur) {
-          const activeEl = document.activeElement;
-          if (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') {
-            activeEl.blur();
-            history.pushState({ screen: activeTab }, '');
-            return;
-          }
-        }
-
-        if (taskModal.classList.contains('open')) {
-          taskModal.classList.remove('open');
-          history.pushState({ screen: activeTab }, '');
-          return;
-        }
-
-        if (isOnboardingActive) {
-          if (onboardStep === 3) {
-            goToOnboardStep(2);
-            history.pushState({ screen: 'onboarding', step: 2 }, '');
-            return;
-          } else if (onboardStep === 2) {
-            goToOnboardStep(1);
-            history.pushState({ screen: 'onboarding', step: 1 }, '');
-            return;
-          } else {
-            history.pushState({ screen: 'onboarding', step: 1 }, '');
-            return;
-          }
-        }
-
-        if (activeTab !== 'today') {
-          setActiveTab('today');
-          history.pushState({ screen: 'today' }, '');
-          return;
-        }
-
-        history.pushState({ screen: 'today' }, '');
-      });
-
-      history.replaceState({ screen: 'today' }, '');
-
-      // ================================================================
-      // INIT
-      // ================================================================
-      function init() {
-        loadState();
-        recomputeStats();
-        applyTheme();
-        applyTranslations();
-
-        const splashDuration = 1200;
-
-        setTimeout(() => {
-          splashScreen.classList.add('hidden');
-        }, splashDuration);
-
-        setTimeout(() => {
-          splashScreen.style.display = 'none';
-
-          if (state.onboardingComplete) {
-            isOnboardingActive = false;
-            onboarding.classList.add('hidden');
-            appContent.style.display = 'flex';
-            bottomNav.style.display = 'flex';
-            renderToday();
-            renderHistory();
-            renderProfile();
-            history.replaceState({ screen: 'today' }, '');
-          } else {
-            isOnboardingActive = true;
-            onboarding.classList.remove('hidden');
-            appContent.style.display = 'none';
-            bottomNav.style.display = 'none';
-            goToOnboardStep(1);
-            history.replaceState({ screen: 'onboarding', step: 1 }, '');
-          }
-        }, splashDuration + 400);
       }
+    });
+  }
 
-      init();
-    })();
+  /* ============================================================
+     EVENT BINDINGS
+     ============================================================ */
+
+  // Splash → Home
+  setTimeout(() => {
+    const splash = $('splashScreen');
+    splash.classList.add('splash-out');
+    setTimeout(() => {
+      go('homeScreen', 'replace');
+      G.stack = ['homeScreen'];
+    }, 420);
+  }, 1500);
+
+  // Home
+  $('playBtn').addEventListener('click', () => { haptic(10); startGame(); });
+  $('storeBtn').addEventListener('click', () => { haptic(8); renderStore(); go('storeScreen', 'push'); });
+  $('statsBtn').addEventListener('click', () => { haptic(8); renderStats(); go('statsScreen', 'push'); });
+  $('settingsBtn').addEventListener('click', () => { haptic(8); renderSettings(); go('settingsScreen', 'push'); });
+
+  // Store
+  $('storeBackBtn').addEventListener('click', () => { haptic(6); go('homeScreen', 'pop'); });
+  document.querySelectorAll('#storeSegments button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#storeSegments button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      G.storeCat = btn.dataset.cat;
+      haptic(6);
+      renderStore();
+    });
+  });
+
+  // Stats
+  $('statsBackBtn').addEventListener('click', () => { haptic(6); go('homeScreen', 'pop'); });
+  $('achievementsBtn').addEventListener('click', () => { haptic(6); renderAchievements(); go('achievementsScreen', 'push'); });
+  $('achievementsBackBtn').addEventListener('click', () => { haptic(6); go('statsScreen', 'pop'); });
+
+  // Settings
+  $('settingsBackBtn').addEventListener('click', () => { haptic(6); go('homeScreen', 'pop'); });
+
+  // Settings selectors
+  $('languageBtn').addEventListener('click', () => { haptic(8); openLanguageSheet(); });
+  $('appearanceBtn').addEventListener('click', () => { haptic(8); openAppearanceSheet(); });
+  $('difficultyBtn').addEventListener('click', () => { haptic(8); openDifficultySheet(); });
+
+  // Toggles
+  ['sound', 'music', 'haptics', 'notifications', 'targetFeedback', 'animations'].forEach(k => {
+    const sw = $('sw-' + k);
+    if (!sw) return;
+    sw.addEventListener('click', () => {
+      G.data.settings[k] = !G.data.settings[k];
+      save();
+      sw.classList.toggle('on', G.data.settings[k]);
+      haptic(8);
+      if (k === 'animations') applyCosmetics();
+      if (k === 'sound' && G.data.settings[k]) initAudio();
+    });
+  });
+
+  // Restore / reset / legal
+  $('restoreBtn').addEventListener('click', () => {
+    haptic(8);
+    openConfirm({
+      title: t('restoreTitle'),
+      message: t('restoreMessage'),
+      actions: [{ label: t('ok'), bold: true }]
+    });
+  });
+
+  $('resetProgressBtn').addEventListener('click', () => {
+    haptic(10);
+    openConfirm({
+      title: t('resetTitle'),
+      message: t('resetMessage'),
+      actions: [
+        { label: t('cancel') },
+        { label: t('resetConfirm'), destructive: true, bold: true, onClick: () => {
+          localStorage.removeItem(KEY);
+          G.data = JSON.parse(JSON.stringify(DEFAULT));
+          save();
+          applyDirection();
+          applyAppearance();
+          applyCosmetics();
+          applyTranslations();
+          renderSettings();
+          updateHome();
+          showToast(t('resetDone'));
+          go('homeScreen', 'pop');
+        }}
+      ]
+    });
+  });
+
+  $('privacyBtn').addEventListener('click', () => {
+    haptic(6);
+    openConfirm({
+      title: t('privacyTitle'),
+      message: t('privacyMessage'),
+      actions: [{ label: t('ok'), bold: true }]
+    });
+  });
+  $('termsBtn').addEventListener('click', () => {
+    haptic(6);
+    openConfirm({
+      title: t('termsTitle'),
+      message: t('termsMessage'),
+      actions: [{ label: t('ok'), bold: true }]
+    });
+  });
+
+  // Result
+  $('playAgainBtn').addEventListener('click', () => { haptic(10); startGame(); });
+  $('homeFromResultBtn').addEventListener('click', () => {
+    haptic(6);
+    updateHome();
+    go('homeScreen', 'pop');
+  });
+
+  // Game Exit
+  $('gameExitBtn').addEventListener('click', () => {
+    const g = G.game;
+    if (!g.active) {
+      abandonGame();
+      updateHome();
+      go('homeScreen', 'pop');
+      return;
+    }
+    haptic(10);
+    pauseGame();
+    openConfirm({
+      title: t('exitTitle'),
+      message: t('exitMessage'),
+      actions: [
+        { label: t('exitContinue'), bold: true, onClick: () => { resumeGame(); } },
+        { label: t('exitConfirm'), destructive: true, onClick: () => {
+          abandonGame();
+          updateHome();
+          go('homeScreen', 'pop');
+        }}
+      ]
+    });
+  });
+
+  /* ============================================================
+     GLOBAL LISTENERS
+     ============================================================ */
+  document.addEventListener('pointerdown', function once() {
+    initAudio();
+    document.removeEventListener('pointerdown', once);
+  }, { once: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (e.target.closest('#gameScreen') || e.target.closest('#homeScreen')) {
+      if (!e.target.closest('.screen-content') && !e.target.closest('.home-inner')) {
+        e.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && G.game.active && !G.game.paused) {
+      pauseGame();
+      openConfirm({
+        title: t('pausedTitle'),
+        message: t('pausedMessage'),
+        actions: [{ label: t('pausedContinue'), bold: true, onClick: () => resumeGame() }]
+      });
+    }
+  });
+
+  // Android Back button / Escape key — dismiss topmost overlay first
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (G.sheet.open) { closeSelect(true); return; }
+    if (G.confirm.open) { closeConfirm(true); return; }
+  });
+
+  // Re-place target on resize / orientation change
+  let resizeTO = null;
+  function handleResize() {
+    clearTimeout(resizeTO);
+    resizeTO = setTimeout(() => {
+      if (G.game.targetEl && G.game.active && !G.game.paused) {
+        const t = G.game.targetEl;
+        t.remove();
+        G.game.targetEl = null;
+        spawnTarget();
+      }
+    }, 150);
+  }
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', () => {
+    clearTimeout(resizeTO);
+    resizeTO = setTimeout(handleResize, 200);
+  });
+
+  /* ============================================================
+     INIT
+     ============================================================ */
+  applyDirection();
+  applyAppearance();
+  applyCosmetics();
+  applyTranslations();
+  updateHome();
+  renderSettings();
+
+})();
