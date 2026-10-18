@@ -82,7 +82,12 @@
           chooseAppearance: "Choose appearance",
           chooseLanguage: "Choose language",
           noTaskForDay: "No task recorded for this day.",
-          completedOn: "Completed"
+          completedOn: "Completed",
+          shareStreak: "Share your streak",
+          copy: "Copy",
+          more: "More",
+          shareText: (streak) => `I'm on a ${streak} day streak with One Thing. One day. One thing.`,
+          copied: "Copied to clipboard!"
         },
         ar: {
           onboard1Headline: "شيء واحد يكفي.",
@@ -161,7 +166,12 @@
           chooseAppearance: "اختر المظهر",
           chooseLanguage: "اختر اللغة",
           noTaskForDay: "لا توجد مهمة مسجلة لهذا اليوم.",
-          completedOn: "مكتمل"
+          completedOn: "مكتمل",
+          shareStreak: "شارك سلسلتك",
+          copy: "نسخ",
+          more: "المزيد",
+          shareText: (streak) => `أنا في سلسلة ${streak} يوم مع One Thing. يوم واحد. شيء واحد.`,
+          copied: "تم النسخ!"
         }
       };
 
@@ -272,6 +282,11 @@
         return TRANSLATIONS[state.language]?.[key] || TRANSLATIONS.en[key] || key;
       }
 
+      function tFn(key, ...args) {
+        const val = TRANSLATIONS[state.language]?.[key] || TRANSLATIONS.en[key];
+        return typeof val === 'function' ? val(...args) : val;
+      }
+
       function applyTranslations() {
         document.querySelectorAll('[data-i18n]').forEach(el => {
           const key = el.dataset.i18n;
@@ -318,6 +333,8 @@
       const flameWrapperCompleted = document.getElementById('flameWrapperCompleted');
       const streakNumberCompleted = document.getElementById('streakNumberCompleted');
       const streakLabelCompleted = document.getElementById('streakLabelCompleted');
+      const shareBtn = document.getElementById('shareBtn');
+      const shareCompletedBtn = document.getElementById('shareCompletedBtn');
 
       const statTotalCompleted = document.getElementById('statTotalCompleted');
       const statActiveDays = document.getElementById('statActiveDays');
@@ -348,14 +365,12 @@
       const modalAddBtn = document.getElementById('modalAddBtn');
       const modalCancelBtn = document.getElementById('modalCancelBtn');
 
-      // Settings sheet elements
       const settingsSheetOverlay = document.getElementById('settingsSheetOverlay');
       const settingsSheet = document.getElementById('settingsSheet');
       const settingsSheetTitle = document.getElementById('settingsSheetTitle');
       const settingsSheetClose = document.getElementById('settingsSheetClose');
       const settingsSheetOptions = document.getElementById('settingsSheetOptions');
 
-      // Time picker elements
       const timePickerOverlay = document.getElementById('timePickerOverlay');
       const timePickerSheet = document.getElementById('timePickerSheet');
       const timePickerTitle = document.getElementById('timePickerTitle');
@@ -366,25 +381,26 @@
       const timePickerPreview = document.getElementById('timePickerPreview');
       const timePickerConfirm = document.getElementById('timePickerConfirm');
 
+      const shareSheetOverlay = document.getElementById('shareSheetOverlay');
+      const shareSheet = document.getElementById('shareSheet');
+      const shareSheetClose = document.getElementById('shareSheetClose');
+      const sharePreviewNumber = document.getElementById('sharePreviewNumber');
+      const shareOptions = document.getElementById('shareOptions');
+
+      const navIndicator = document.getElementById('navIndicator');
+
       // ================================================================
       // NAVIGATION STATE
       // ================================================================
       let activeTab = 'today';
       let isOnboardingActive = false;
 
-      // ================================================================
-      // SETTINGS SHEET STATE
-      // ================================================================
-      let currentSettingsSheetType = null; // 'language' | 'appearance'
+      let currentSettingsSheetType = null;
 
-      // Time picker state
       let pickerHour = 9;
       let pickerMinute = '00';
       let pickerPeriod = 'AM';
 
-      // ================================================================
-      // ONBOARDING
-      // ================================================================
       let onboardStep = 1;
       let selectedTime = null;
       let modalSelectedTime = null;
@@ -477,10 +493,12 @@
         renderHistory();
         renderProfile();
         applyTranslations();
+
+        requestAnimationFrame(updateNavIndicator);
       }
 
       // ================================================================
-      // REALISTIC FLAME IGNITION ANIMATION
+      // FLAME IGNITION ANIMATION
       // ================================================================
       function igniteFlame(wrapper, streakNum, streakLbl, streakCount, isFirstTime) {
         if (!wrapper) return;
@@ -499,21 +517,21 @@
           setTimeout(() => {
             wrapper.classList.remove('igniting');
             wrapper.classList.add('ignited');
-          }, 900);
+          }, 1000);
         } else {
           wrapper.classList.remove('igniting');
           wrapper.classList.add('ignited', 'flare');
           createSparks(wrapper, 2);
           setTimeout(() => {
             wrapper.classList.remove('flare');
-          }, 500);
+          }, 550);
         }
 
         if (streakNum) {
           streakNum.classList.remove('updating');
           void streakNum.offsetWidth;
           streakNum.classList.add('updating');
-          setTimeout(() => streakNum.classList.remove('updating'), 400);
+          setTimeout(() => streakNum.classList.remove('updating'), 450);
         }
       }
 
@@ -540,7 +558,7 @@
 
           setTimeout(() => {
             if (spark.parentNode) spark.parentNode.removeChild(spark);
-          }, 1100);
+          }, 1200);
         }
       }
 
@@ -572,6 +590,12 @@
         streakNumber.textContent = streakCount;
         streakLabel.textContent = t('dayStreak');
 
+        if (streakCount > 0) {
+          shareBtn.classList.remove('hidden');
+        } else {
+          shareBtn.classList.add('hidden');
+        }
+
         if (isCompletedToday) {
           taskCompletedState.classList.remove('hidden');
           if (flameWrapperCompleted) {
@@ -580,12 +604,16 @@
           }
           streakNumberCompleted.textContent = streakCount;
           streakLabelCompleted.textContent = t('dayStreak');
+          shareCompletedBtn.classList.remove('hidden');
+          shareCompletedBtn.textContent = t('shareStreak');
         } else if (hasTask) {
           taskActiveState.classList.remove('hidden');
           taskTitle.textContent = state.currentTask.title;
           taskMeta.textContent = state.currentTask.time || '';
+          shareCompletedBtn.classList.add('hidden');
         } else {
           emptyTodayState.classList.remove('hidden');
+          shareCompletedBtn.classList.add('hidden');
         }
       }
 
@@ -648,7 +676,7 @@
       });
 
       // ================================================================
-      // SETTINGS SHEET (Language / Appearance)
+      // SETTINGS SHEET
       // ================================================================
       function openSettingsSheet(type) {
         currentSettingsSheetType = type;
@@ -680,6 +708,7 @@
                 renderToday();
                 renderHistory();
                 renderProfile();
+                updateNavIndicator();
               }
               closeSettingsSheet();
             });
@@ -730,10 +759,9 @@
       });
 
       // ================================================================
-      // TIME PICKER SHEET
+      // TIME PICKER
       // ================================================================
       function parseTimeString(timeStr) {
-        // Parse strings like "9:00 AM" or "14:30"
         const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
         if (!match) return { hour: 9, minute: '00', period: 'AM' };
         let hour = parseInt(match[1], 10);
@@ -756,15 +784,12 @@
       }
 
       function setTimePickerScrollSelection() {
-        // Hour
         hourScroll.querySelectorAll('.time-picker-item').forEach(item => {
           item.classList.toggle('selected', parseInt(item.dataset.value, 10) === pickerHour);
         });
-        // Minute
         minuteScroll.querySelectorAll('.time-picker-item').forEach(item => {
           item.classList.toggle('selected', item.dataset.value === pickerMinute);
         });
-        // Period
         periodScroll.querySelectorAll('.time-picker-item').forEach(item => {
           item.classList.toggle('selected', item.dataset.value === pickerPeriod);
         });
@@ -831,6 +856,119 @@
         renderProfile();
         closeTimePicker();
       });
+
+      // ================================================================
+      // SHARE SHEET
+      // ================================================================
+      function getShareText() {
+        return tFn('shareText', state.streak);
+      }
+
+      function openShareSheet() {
+        sharePreviewNumber.textContent = state.streak;
+        shareSheetOverlay.classList.add('open');
+      }
+
+      function closeShareSheet() {
+        shareSheetOverlay.classList.remove('open');
+      }
+
+      shareBtn.addEventListener('click', openShareSheet);
+      shareCompletedBtn.addEventListener('click', openShareSheet);
+      shareSheetClose.addEventListener('click', closeShareSheet);
+      shareSheetOverlay.addEventListener('click', (e) => {
+        if (e.target === shareSheetOverlay) closeShareSheet();
+      });
+
+      shareOptions.addEventListener('click', (e) => {
+        const btn = e.target.closest('.share-option');
+        if (!btn) return;
+        const platform = btn.dataset.share;
+        const text = encodeURIComponent(getShareText());
+        const url = encodeURIComponent('https://onething.app');
+
+        let shareUrl = '';
+        switch (platform) {
+          case 'twitter':
+            shareUrl = `https://twitter.com/intent/tweet?text=${text}&url=${url}`;
+            break;
+          case 'facebook':
+            shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${text}`;
+            break;
+          case 'whatsapp':
+            shareUrl = `https://wa.me/?text=${text}%20${url}`;
+            break;
+          case 'telegram':
+            shareUrl = `https://t.me/share/url?url=${url}&text=${text}`;
+            break;
+          case 'email':
+            shareUrl = `mailto:?subject=One%20Thing%20Streak&body=${text}%20${url}`;
+            break;
+          case 'copy':
+            navigator.clipboard.writeText(getShareText() + ' ' + url).then(() => {
+              showToast(t('copied'));
+            }).catch(() => {
+              const ta = document.createElement('textarea');
+              ta.value = getShareText() + ' ' + url;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+              showToast(t('copied'));
+            });
+            return;
+          case 'native':
+            if (navigator.share) {
+              navigator.share({
+                title: 'One Thing',
+                text: getShareText(),
+                url: 'https://onething.app'
+              }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(getShareText() + ' https://onething.app').then(() => {
+                showToast(t('copied'));
+              }).catch(() => {});
+            }
+            return;
+        }
+
+        if (shareUrl) {
+          window.open(shareUrl, '_blank', 'noopener,noreferrer');
+        }
+      });
+
+      function showToast(message) {
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = message;
+        toast.style.cssText = `
+          position: fixed;
+          bottom: 100px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--text-primary);
+          color: var(--bg-primary);
+          padding: 12px 24px;
+          border-radius: 40px;
+          font-size: 14px;
+          font-weight: 500;
+          z-index: 999;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+          pointer-events: none;
+        `;
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => {
+          toast.style.opacity = '1';
+        });
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          setTimeout(() => toast.remove(), 300);
+        }, 1800);
+      }
 
       // ================================================================
       // RENDER HISTORY CALENDAR
@@ -1032,16 +1170,38 @@
       }
 
       // ================================================================
+      // NAVIGATION INDICATOR
+      // ================================================================
+      function updateNavIndicator() {
+        const activeItem = document.querySelector('.nav-item.active');
+        if (!activeItem || !navIndicator) return;
+
+        const pill = activeItem.closest('.nav-pill');
+        if (!pill) return;
+
+        const pillRect = pill.getBoundingClientRect();
+        const itemRect = activeItem.getBoundingClientRect();
+
+        const left = itemRect.left - pillRect.left;
+        const width = itemRect.width;
+
+        navIndicator.style.left = left + 'px';
+        navIndicator.style.width = width + 'px';
+        navIndicator.classList.add('visible');
+      }
+
+      // ================================================================
       // NAVIGATION
       // ================================================================
       function setActiveTab(tab) {
         if (activeTab === tab) return;
         activeTab = tab;
 
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
         todayScreen.classList.add('hidden');
         historyScreen.classList.add('hidden');
         profileScreen.classList.add('hidden');
-        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
 
         if (tab === 'today') {
           todayScreen.classList.remove('hidden');
@@ -1056,13 +1216,14 @@
           document.getElementById('navProfile').classList.add('active');
           renderProfile();
         }
+
+        requestAnimationFrame(updateNavIndicator);
       }
 
       document.getElementById('navToday').addEventListener('click', () => setActiveTab('today'));
       document.getElementById('navHistory').addEventListener('click', () => setActiveTab('history'));
       document.getElementById('navProfile').addEventListener('click', () => setActiveTab('profile'));
 
-      // Edit name
       document.getElementById('editNameRow').addEventListener('click', () => {
         const name = prompt(t('enterName'));
         if (name !== null && name.trim()) {
@@ -1072,29 +1233,24 @@
         }
       });
 
-      // Appearance — use new settings sheet
       document.getElementById('appearanceRow').addEventListener('click', () => {
         openSettingsSheet('appearance');
       });
 
-      // Language — use new settings sheet
       document.getElementById('languageRow').addEventListener('click', () => {
         openSettingsSheet('language');
       });
 
-      // Support
       document.getElementById('supportRow').addEventListener('click', () => {
         window.location.href = 'mailto:ahmedp7918@gmail.com?subject=One%20Thing%20Support';
       });
 
-      // Notifications
       document.getElementById('notificationRow').addEventListener('click', () => {
         state.notificationsEnabled = !state.notificationsEnabled;
         saveState();
         renderProfile();
       });
 
-      // Reminder time — use new time picker
       document.getElementById('reminderTimeRow').addEventListener('click', () => {
         openTimePicker();
       });
@@ -1110,6 +1266,12 @@
             history.pushState({ screen: activeTab }, '');
             return;
           }
+        }
+
+        if (shareSheetOverlay.classList.contains('open')) {
+          closeShareSheet();
+          history.pushState({ screen: activeTab }, '');
+          return;
         }
 
         if (timePickerOverlay.classList.contains('open')) {
@@ -1156,6 +1318,10 @@
 
       history.replaceState({ screen: 'today' }, '');
 
+      window.addEventListener('resize', () => {
+        requestAnimationFrame(updateNavIndicator);
+      });
+
       // ================================================================
       // INIT
       // ================================================================
@@ -1183,6 +1349,7 @@
             renderHistory();
             renderProfile();
             history.replaceState({ screen: 'today' }, '');
+            requestAnimationFrame(updateNavIndicator);
           } else {
             isOnboardingActive = true;
             onboarding.classList.remove('hidden');
